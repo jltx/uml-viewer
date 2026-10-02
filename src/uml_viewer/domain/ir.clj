@@ -58,7 +58,9 @@
                (contains? x :cc) (assoc :cc (as-cc (:cc x)))
                (contains? x :crap) (assoc :crap (as-crap (:crap x)))
                (true? (:private x)) (assoc :private true)
-               (contains? x :name) (assoc :name (:name x)))
+               (contains? x :name) (assoc :name (:name x))
+               (some? (:file x)) (assoc :file (str (:file x)))
+               (some? (:line x)) (assoc :line (long (:line x))))
     :else (throw (ex-info "member must be a string or map" {:value x}))))
 
 (defn- as-class [c]

@@ -4,18 +4,23 @@
  :prefix "uml-viewer",
  :edge-kinds
  {[:main.uml-viewer :adapters.core] :association,
+  [:main.go-metrics :go-language.metrics-go] :association,
   [:main.ir-generator :typescript-language.graph-typescript] :association,
   [:application.document :domain.hierarchy] :association,
   [:main.ir-generator :clojure-language.graph-clojure] :association,
   [:main.uml-viewer :rust-language.source-rust] :association,
   [:application.document :engine.compose] :association,
   [:main.uml-viewer :typescript-language.source-typescript] :association,
+  [:main.ir-generator :go-language.graph-go] :association,
   [:main :python-language] :association,
   [:engine.compose :engine.layout] :association,
   [:engine.compose :engine.route] :association,
   [:main.ir-generator :rust-language.graph-rust] :association,
   [:adapters.core :adapters.sketch] :association,
+  [:main.uml-viewer :go-language.source-go] :association,
   [:main :application] :association,
+  [:main :go-language] :association,
+  [:main.go-metrics :go-language.graph-go] :association,
   [:main.uml-viewer :clojure-language.source-clojure] :association,
   [:main :clojure-language] :association,
   [:main.ir-generator :application.ir-generator] :association,
@@ -32,7 +37,8 @@
    :clojure-language
    :typescript-language
    :rust-language
-   :python-language]
+   :python-language
+   :go-language]
   [:engine]
   [:application]
   [:adapters]
@@ -49,15 +55,18 @@
   :typescript-language
   :rust-language
   :python-language
+  :go-language
   :domain],
  :omit [],
  :edges
  [{:from :main.uml-viewer, :to :adapters.core, :kind :dependency}
+  {:from :main.go-metrics, :to :go-language.metrics-go, :kind :dependency}
   {:from :typescript-language.source-typescript, :to :source, :kind :implements}
   {:from :main.ir-generator,
    :to :typescript-language.graph-typescript,
    :kind :dependency}
   {:from :clojure-language.source-clojure, :to :source, :kind :implements}
+  {:from :main.go-metrics, :to :application.ir-generator, :kind :dependency}
   {:from :adapters.draw, :to :application.document, :kind :dependency}
   {:from :rust-language.source-rust, :to :source, :kind :implements}
   {:from :application.document, :to :domain.hierarchy, :kind :dependency}
@@ -72,6 +81,7 @@
   {:from :engine.layout, :to :domain.geom, :kind :dependency}
   {:from :python-language.graph-python, :to :graph, :kind :implements}
   {:from :main.uml-viewer, :to :rust-language.source-rust, :kind :dependency}
+  {:from :adapters.core, :to :application.document, :kind :dependency}
   {:from :adapters.sketch, :to :application.events, :kind :dependency}
   {:from :application.document, :to :engine.compose, :kind :dependency}
   {:from :main.uml-viewer, :to :typescript-language.source-typescript, :kind :dependency}
@@ -79,12 +89,15 @@
   {:from :adapters.draw, :to :application.detail, :kind :dependency}
   {:from :adapters.draw, :to :quil, :kind :dependency}
   {:from :main.uml-viewer, :to :domain.log, :kind :dependency}
+  {:from :main.ir-generator, :to :go-language.graph-go, :kind :dependency}
+  {:from :go-language.source-go, :to :source, :kind :implements}
   {:from :adapters.draw, :to :engine.curve, :kind :dependency}
   {:from :application.events, :to :application.detail, :kind :dependency}
   {:from :adapters.source-window, :to :source, :kind :dependency}
   {:from :domain.hierarchy, :to :domain.config, :kind :dependency}
   {:from :application.ir-generator, :to :domain.policy, :kind :dependency}
   {:from :application.events, :to :application.document, :kind :dependency}
+  {:from :adapters.core, :to :application.events, :kind :dependency}
   {:from :adapters.draw, :to :engine.hit, :kind :dependency}
   {:from :clojure-language.graph-clojure, :to :graph, :kind :implements}
   {:from :adapters.draw, :to :domain.geom, :kind :dependency}
@@ -106,10 +119,12 @@
   {:from :adapters.sketch, :to :adapters.source-window, :kind :dependency}
   {:from :adapters.sketch, :to :domain.mailbox, :kind :dependency}
   {:from :adapters.core, :to :adapters.sketch, :kind :dependency}
+  {:from :main.uml-viewer, :to :go-language.source-go, :kind :dependency}
   {:from :engine.hit, :to :engine.layout, :kind :dependency}
   {:from :application.document, :to :domain.policy, :kind :dependency}
   {:from :typescript-language.graph-typescript, :to :graph, :kind :implements}
   {:from :engine.hit, :to :domain.geom, :kind :dependency}
+  {:from :main.go-metrics, :to :go-language.graph-go, :kind :dependency}
   {:from :adapters.draw, :to :domain.config, :kind :dependency}
   {:from :main.uml-viewer, :to :clojure-language.source-clojure, :kind :dependency}
   {:from :engine.curve, :to :domain.geom, :kind :dependency}
@@ -127,8 +142,10 @@
   {:from :adapters.sketch, :to :application.document, :kind :dependency}
   {:from :application.events, :to :application.overlay, :kind :dependency}
   {:from :application.events, :to :engine.hit, :kind :dependency}
+  {:from :adapters.core, :to :engine.hit, :kind :dependency}
   {:from :adapters.sketch, :to :application.overlay, :kind :dependency}
   {:from :application.document, :to :application.overlay, :kind :dependency}
+  {:from :go-language.graph-go, :to :graph, :kind :implements}
   {:from :application.document, :to :domain.mailbox, :kind :dependency}
   {:from :engine.route, :to :domain.geom, :kind :dependency}
   {:from :adapters.source-window, :to :javax.swing, :kind :dependency}
@@ -295,6 +312,27 @@
    :level 1,
    :lang :clojure,
    :id :engine.route}
+  {:stereotype nil,
+   :ns "uml-viewer.go-language.graph-go",
+   :name "GraphGo",
+   :file "src/uml_viewer/go_language/graph_go.clj",
+   :level 0,
+   :lang :clojure,
+   :id :go-language.graph-go}
+  {:stereotype nil,
+   :ns "uml-viewer.go-language.metrics-go",
+   :name "MetricsGo",
+   :file "src/uml_viewer/go_language/metrics_go.clj",
+   :level 0,
+   :lang :clojure,
+   :id :go-language.metrics-go}
+  {:stereotype nil,
+   :ns "uml-viewer.go-language.source-go",
+   :name "SourceGo",
+   :file "src/uml_viewer/go_language/source_go.clj",
+   :level 0,
+   :lang :clojure,
+   :id :go-language.source-go}
   {:stereotype :interface,
    :ns "uml-viewer.graph",
    :name "Graph",
@@ -302,6 +340,13 @@
    :level 0,
    :lang :clojure,
    :id :graph}
+  {:stereotype nil,
+   :ns "uml-viewer.main.go-metrics",
+   :name "GoMetrics",
+   :file "src/uml_viewer/main/go_metrics.clj",
+   :level 4,
+   :lang :clojure,
+   :id :main.go-metrics}
   {:stereotype nil,
    :ns "uml-viewer.main.ir-generator",
    :name "IrGenerator",

@@ -83,6 +83,37 @@
                                                        :prefix "demo"}))]
       (should= "T" (:title doc)))))
 
+(defn- opts-recorder [seen-opts]
+  (reify graph/LanguageGraph
+    (scan [_ _root opts]
+      (swap! seen-opts conj opts)
+      {:classes [] :edges []})))
+
+(describe "ir-generator go opts"
+  (it "passes the policy :go map to the scanner"
+    (let [seen (atom nil)]
+      (ir-generator/document (stub-scan seen [demo-a])
+                             (demo-policy {:go {:goos "linux"}}))
+      (should= {:prefix "uml-viewer" :go {:goos "linux"}} (:opts @seen))))
+
+  (it "passes each source its own :go map, else the policy's"
+    (let [seen-opts (atom [])]
+      (with-redefs [graph/lookup (constantly (opts-recorder seen-opts))]
+        (ir-generator/scan-policy nil {:prefix "demo"
+                                       :go {:goos "linux"}
+                                       :sources [{:lang :go :root "first" :go {:goos "windows"}}
+                                                 {:lang :go :root "second"}]}))
+      (should= [{:prefix "demo" :ns-prefix "demo" :lang :go :go {:goos "windows"}}
+                {:prefix "demo" :ns-prefix "demo" :lang :go :go {:goos "linux"}}]
+               @seen-opts)))
+
+  (it "leaves :go out of a source's opts when neither the source nor the policy has one"
+    (let [seen-opts (atom [])]
+      (with-redefs [graph/lookup (constantly (opts-recorder seen-opts))]
+        (ir-generator/scan-policy nil {:prefix "demo"
+                                       :sources [{:lang :python :root "first"}]}))
+      (should= [{:prefix "demo" :ns-prefix "demo" :lang :python}] @seen-opts))))
+
 (describe "ir-generator generate"
   (it "writes the document to the given path"
     (let [seen (atom nil)
@@ -152,7 +183,7 @@
                                (.getPath policy-f)
                                (.getPath out-f)))
       (should= "" (str out))
-      (should= "Unassigned namespaces: demo.b, demo.c\n" (str err))))
+      (should= "Unassigned namespaces: demo.b, demo.c\n" (str/replace (str err) "\r\n" "\n"))))
 
   (it "does not warn when every namespace is assigned"
     (let [out-f (java.io.File/createTempFile "uml-out" ".edn")

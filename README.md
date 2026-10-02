@@ -39,7 +39,8 @@ the arrows, colors CRAP, and lets you click.
 The IR is **topology**: the namespace tree, classes, and edges. **Metrics**
 (CC, coverage, CRAP, killed/survived/uncovered) come from `.metrics/`
 snapshots produced by [crap4clj](https://github.com/unclebob/crap4clj) and
-[clj-mutate](https://github.com/unclebob/clj-mutate). The viewer overlays
+[clj-mutate](https://github.com/unclebob/clj-mutate) (for Go, see
+[Go metrics](#go-metrics)). The viewer overlays
 those files at load, keyed by namespace and function name. Agents edit the
 policy, not the IR. See [Policy](#policy).
 
@@ -126,6 +127,55 @@ This project's `:crap` alias uses `../clojure/crap4clj`. `:mutate` pins
 
 Rename or move of a function is a new form: overlay does not match old names.
 
+### Snapshot to a PNG
+
+```bash
+mkdir -p target
+clojure -M:run --snapshot target/uml-viewer.png examples/uml-viewer.edn
+clojure -M:run --snapshot target/adapters.png --focus adapters examples/uml-viewer.edn
+```
+
+`--snapshot FILE` draws the diagram once, saves the window to `FILE`, and
+exits. `FILE` must end in `.png`, and its directory must exist (the first
+command above creates `target/`). A view larger than the window is zoomed
+out to fit. No companion starts and no mail is acted on.
+
+`--focus ID` is allowed only with `--snapshot`. It opens the box with that
+dotted id before drawing, as if you had double-clicked down to it (`pkg`,
+or `a.b` for a box inside `a`). The box must be one that opens, such as a
+component that holds other boxes. A leaf class such as `store` is not: the
+run prints `--focus names no node that can be opened: store` and exits 1.
+
+### Windows
+
+There is no tmux and no companion on Windows, so the viewer opens a diagram
+that already exists. That is what `--restart` does without a companion. The
+warning above about `--restart` is for the companion setup.
+
+From the project you want to view, in Windows PowerShell or PowerShell 7:
+
+```powershell
+cd C:\work\store-service
+C:\tools\uml-viewer\scripts\uml.ps1 -Restart examples\store-service.edn
+```
+
+`scripts\uml.ps1 [-Restart] [-Help] [diagram.edn]` finds the uml-viewer
+checkout from its own location and runs from the current directory. It
+needs a `clojure` executable on `PATH` (for example scoop's `clj-deps`). It
+starts the viewer detached and appends the output to
+**`uml-viewer-log.txt`** in that directory. `-Restart` passes `--restart`.
+With no `diagram.edn`, `-Restart` picks `examples\<project>.edn`, or the
+first `examples\*.edn` that is not a policy. `-Help` prints the usage and
+starts nothing. If PowerShell refuses to run the script, start it with
+`powershell -ExecutionPolicy Bypass -File <path>\uml.ps1 …`. From the
+checkout itself, `clojure -M:run --restart examples/uml-viewer.edn` does
+the same without the script.
+
+To change the diagram, edit the policy and run `clojure -M:ir <policy>`
+(see [Policy](#policy)). The open viewer reloads on file change, or press
+`R`. `scripts/get-uml-viewer` and `./uml` are zsh scripts and are not
+available on Windows.
+
 ## Navigation
 
 **Layer** and **component** mean the same thing: a namespace grouping
@@ -191,10 +241,10 @@ namespace is a `:dependency`. `requiring-resolve` of a quoted var is a
 `:stereotype :interface`. `defrecord` or `deftype` of a protocol is
 `:implements`. External `:require`s and `:import`s become **foreign**
 classes. The overlay fills Clojure members from `.metrics/`. TypeScript,
-Rust, and Python are separate scanners (see
-[Language graphs](#language-graphs)): one class per module, with exported
-members as `:ops`. The overlay joins each snapshot by `:ns`, then by
-the class id.
+Rust, Python, and Go are separate scanners (see
+[Language graphs](#language-graphs)): one class per module (per package
+for Go), with exported members as `:ops` (Go also lists unexported ones, as
+private). The overlay joins each snapshot by `:ns`, then by the class id.
 
 ### Do not invent layers (components)
 
@@ -291,6 +341,7 @@ tree's namespace root. `src/model.ts` becomes `bookwriter.model`
 | `:src` | Source root when `:sources` is absent |
 | `:sources` | One scan per `{:lang :root :prefix?}`. The entry `:prefix` is that tree's namespace root |
 | `:foreign` | External libs as ovals. A listed prefix collapses `quil.core` to `quil`. Unlisted externals are dropped |
+| `:go` | Go only: `{:goos "linux"}` selects the `GOOS` the scan assumes |
 
 **Viewer Grok loop** (passed with `--rules` to the companion session only)
 
@@ -514,17 +565,199 @@ project name. `list[Animal]` is not. Public module-level functions and
 classes are `:ops`. A module whose public classes are only `Protocol` or
 `ABC` bases, with no public functions, is `:stereotype :interface`.
 
+**Go** (`uml-viewer.go-language.graph-go`) scans one Go module and emits
+one class per package. It needs `go` on `PATH`: a small bundled Go program,
+run with `go run` in the module root, reads `go list` and parses each file.
+Set `:lang :go`, `:src` to the module root (the directory with `go.mod`,
+resolved against the directory you run from), and `:prefix` to the module
+path with dots for slashes. `:src` must be the module root itself: a
+subdirectory of the module is rejected with an error that names the module
+root. A package that imports another package of the module is a
+`:dependency`. Test files (`*_test.go`) are not scanned, so a
+directory that holds only tests makes no class. Build constraints apply, so
+a file for another operating system is not scanned. `:go {:goos "linux"}`
+selects the `GOOS` the scan assumes. It is the only setting you can pass.
+When the policy has no `:goos`, a `GOOS` in the environment does the same.
+A `GOARCH` in the environment applies to the scan too; the policy has no
+key for the architecture. Everything else (`GOFLAGS`,
+`CGO_ENABLED`, build tags, and so on) comes from the environment. A
+target `GOOS` (the `:goos` or the environment's) or a `GOARCH` in the
+environment that differs from the host turns cgo off by default, so cgo
+files are not listed. Go 1.20 or newer is needed. Top-level functions,
+methods, and types are the members (`:ops`). Constants and variables are
+not. A member whose last identifier does not start with an upper-case
+letter is private.
+
+How a package, an import, and a member are named:
+
+| Item | Name | Example (module `example.com/demo`) |
+|------|------|-------------------------------------|
+| Namespace | import path, `/` replaced by `.` | `example.com.demo.store` |
+| Class id | namespace minus `:prefix` | `:store`, `:internal.util` |
+| Root package | last segment of the module path | `:demo` |
+| Standard-library import | `std.` plus the dotted path | `:std.net.http` |
+| Other import outside the module | its dotted path | `:github.com.acme.lib` |
+| Member | `Func`, `Receiver.Method`, or the type name | `Store.Close` |
+
+A member name has no `*` and no type parameters. For a member, the last
+identifier decides: `Store.close` is private. Like the other languages,
+an import outside the module is an oval only when `:foreign` lists a prefix
+of its id, and `:foreign [std]` collapses the whole standard library into
+one oval. Unlisted imports are dropped. The policy for the bundled demo
+module is `examples/go-demo.policy.edn`. It writes `examples/go-demo.edn`,
+which is git-ignored:
+
+```bash
+clojure -M:ir examples/go-demo.policy.edn
+```
+
+Open the result as described under [Run](#run). On Windows, see
+[Windows](#windows). The demo diagram sits outside the demo module, so it
+shows no metrics. To save it as a PNG, run the step above first, then
+`clojure -M:run --snapshot target/go-demo.png examples/go-demo.edn`
+(see [Snapshot to a PNG](#snapshot-to-a-png)).
+
+Limits:
+
+- A directory name that contains a dot splits into levels, because every
+  `.` in a class id is a nesting level.
+- A file may hold several `init` functions. Every `init` row of a class
+  opens the first `init`. When metrics are loaded, the `init` functions of
+  a package share one card row and get no metrics; without metrics, each
+  `init` has its own row.
+- Member navigation needs a hierarchical policy (the default). With a
+  `:packages` or `:diagrams` policy, the card lists only the members that
+  have metrics, and a click finds a member only when it is declared in the
+  first file of the package.
+- The tree view titles a box from the last segment of its id, capitalized:
+  `cmd.demo` is titled `Demo`, even though its package is named `main`.
+- Two packages of the module that map to one class id make `clojure -M:ir`
+  fail with an error that names both import paths. For a module
+  `example.com/demo`, the root package and a top-level directory `demo`
+  both map to `:demo`.
+- Each member and class keeps the file of its declaration. The path is
+  relative to the directory where `clojure -M:ir` ran when the module is
+  inside that directory, and absolute when it is not. Run the viewer from
+  that same directory, or the source file is not found. A member whose
+  recorded line no longer holds its declaration (the file changed after the
+  scan) is found again by a search of the file.
+- When `go` is not on `PATH`, the scan fails with a message that starts
+  `Go toolchain not found on PATH`. When `:src` is not a directory, it fails
+  with `Go module root not found: <dir>`.
+
 `merge-scans` links a TypeScript `invoke("read_text")` to the Rust class
 that owns `#[tauri::command] fn read_text`, as a `:dependency`. Two
 project classes with the same id are an error. When a dependency and an
 `:implements` edge join the same pair, the IR keeps `:implements`.
 
 CRAP and mutation for TypeScript, Rust, and Python come from separate
-tools. The overlay joins a snapshot to the class whose `:ns` equals that
-namespace. Otherwise the class id owns that name (`bookwriter.model`
-owns `model`), a dotted child rolls up (`pdf` owns `pdf.Layout`), and
-the policy prefix belongs to the single undotted Rust class. `::` is
-read as `.`. A class with no CRAP or mutation data is red.
+tools; for Go see [Go metrics](#go-metrics). The overlay joins a snapshot
+to the class whose `:ns` equals that namespace. Otherwise the class id
+owns that name (`bookwriter.model` owns `model`), a dotted child rolls up
+(`pdf` owns `pdf.Layout`), and the policy prefix belongs to the single
+undotted Rust class. `::` is read as `.`. A class with no CRAP or mutation
+data is red.
+
+### Go metrics
+
+`uml-viewer.main.go-metrics` runs the two Go tools over a module and
+writes the `.metrics` snapshots that the overlay reads. The tools are
+separate programs and are not bundled: put `crap4go` and `mutate4go` (from
+[github.com/unclebob/crap4go](https://github.com/unclebob/crap4go) and
+[github.com/unclebob/mutate4go](https://github.com/unclebob/mutate4go))
+and `go` on `PATH`. The two tools run the test command through `sh -c`, so
+`sh` must be on `PATH` too. The runner only checks that `sh` starts. On
+Windows, run from Git Bash or add Git's `usr\bin` to `PATH`. Without `sh`
+the run prints `Go metrics need sh on PATH (run from Git Bash, or add Git's
+usr\bin to PATH)` and exits 1.
+
+From this checkout, with the policy's `:src` pointing at the module (an
+absolute path is fine):
+
+```bash
+clojure -M:go-metrics crap my-module.policy.edn
+clojure -M:go-metrics mutate my-module.policy.edn
+clojure -M:go-metrics mutate my-module.policy.edn --since main
+clojure -M:go-metrics refresh my-module.policy.edn
+```
+
+`refresh` runs `crap` (it takes the same `--since`), then regenerates the
+diagram at the policy's `:out` and prints `Wrote <path>`. A running viewer
+reloads when the diagram or `.metrics` changes (`R` forces it). The diagram
+is still written when a package could not be measured, and the exit status
+is then 1. `refresh` never runs `mutate`: that stays a separate, explicit
+command, because it is slow and rewrites source files.
+
+From the Go project, using the dependency form that `scripts/get-uml-viewer`
+writes (`<checkout>` is the absolute path of the uml-viewer checkout):
+
+```bash
+clojure -Sdeps '{:deps {uml-viewer/uml-viewer {:local/root "<checkout>"}}}' \
+  -M -m uml-viewer.main.go-metrics crap my-module.policy.edn
+```
+
+That quoting is for bash and zsh. In PowerShell, run from the checkout
+and give `:src` as an absolute path. `go`, `git`, `crap4go`, and
+`mutate4go` all run with the module root as their directory. A policy
+`:src` that is not a directory ends the run with `Go module root not found`.
+
+What a run does:
+
+- `crap` runs `crap4go` once per package, with `go test ./<dir>` as the
+  test command (`go test .` for the module root package), and writes
+  `.metrics/crap.edn`. Coverage comes from that
+  package's own tests only. Coverage that another package's tests give is
+  not counted.
+- `mutate` runs `mutate4go` once per source file, always with
+  `--mutate-all` (every mutation site, not only changed ones), and writes
+  `.metrics/mutate/<import path>.edn` for each package.
+- `--since <git-ref>` takes the changed files from
+  `git diff --name-only --relative <git-ref>...HEAD`, run in the module
+  root. Test files do not count, and neither do uncommitted changes. For
+  `mutate`, only the changed Go source files are mutated. For `crap`, every
+  package that holds a changed file is measured whole. Entries of other
+  packages stay in the snapshot.
+- Each tool run prints a progress line, for example
+  `crap4go example.com/demo/store 0.3s`. If a tool fails, its output and a
+  `failed` progress line print, the run goes on, and at the end each
+  package with no result prints `not measured: <import path>`. The exit
+  status is then 1, and the earlier entries of that package stay. For
+  `mutate`, a package prints that line when any of its files could not be
+  measured, even if other files of the package were.
+- Startup failures print one message and exit 1, with no stack trace.
+  `crap4go`, `mutate4go`, and `git` print `<program> not found on PATH`.
+  A missing `sh` prints the message above. A missing `go` prints
+  `Go toolchain not found on PATH: …`. A scan that fails prints its own
+  message: `Go module root not found: <dir>`, or the `go scan of <dir>
+  failed:` text with the output of `go` (for example the file name of a
+  syntax error).
+- A function name declared more than once in a package (several `init`)
+  gets no metrics and shares one card row.
+
+Side effects to know before you run it:
+
+- `.metrics/` and `target/coverage/` are written under the module root.
+  Git-ignore both in the module.
+- `mutate4go` rewrites each source file in place while it runs, and keeps
+  `<file>.mutate4go.bak` beside it during the run. It appends a manifest
+  comment footer to every file it runs on. It exits 0 when mutants survive,
+  so a zero exit status does not mean the tests killed every mutant. Run
+  `mutate` only in a throwaway clone. Do not run it on the demo module:
+  its files are tracked by this repository.
+- A mutant that times out can leave an orphaned test process until Go's
+  own test timeout ends it.
+
+The tests run as the **host** build. With a `:goos` that differs from the
+host, the diagram and the list of files handed to `mutate` follow `:goos`,
+but the tests that give the coverage and the kills still run on the host.
+With `:goos "linux"` on a Windows host, `mutate` is pointed at
+`store_linux.go`, which the host build does not compile, so it gets no
+mutation sites. The metrics of a file that is specific to one platform
+are meaningful only when `:goos` is the host's.
+
+The viewer finds `.metrics` by walking up from the path of the diagram
+file. Keep the diagram inside the module tree (for example in the module
+root), or the walk will not reach the module's `.metrics`.
 
 ## IR
 
@@ -650,6 +883,12 @@ exported declaration, the `fn`, or the `def`. The class card passes
 `:lang` and `:file` from the class. A class with no `:lang` still uses
 the Clojure extractor that Main passes in. The protocol is the seam; do
 not special-case languages in the class card.
+
+**Go** (`uml-viewer.go-language.source-go`) opens the member's `:file` at
+its `:line`, as the scanner recorded them. If that line no longer declares
+the member, it searches the file for the declaration. When the search finds
+none, the recorded line stands only if the file still has that line.
+The namespace row of the class card opens the package's first file.
 
 Quil stays in `adapters.draw` and `adapters.sketch`. The rest of the engine
 does not depend on Processing.

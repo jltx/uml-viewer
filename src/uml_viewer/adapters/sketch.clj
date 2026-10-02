@@ -842,3 +842,63 @@
                     state)
     :on-close #'on-main-close
     :middleware [m/fun-mode])))
+
+;; The window and its font may not be ready on the first frame.
+(def ^:private snapshot-frame 3)
+
+(defn- fail-vm! []
+  (System/exit 1))
+
+(defn- snapshot-failed! [reason]
+  (binding [*out* *err*]
+    (println "UML viewer: snapshot failed:" reason))
+  (fail-vm!))
+
+(defn- snapshot-step
+  "Run `step`, exiting 1 when it throws. Quil's safe-fns would otherwise
+  swallow the exception and keep the window open."
+  [step]
+  (try
+    (step)
+    (catch Throwable t
+      (snapshot-failed! (or (.getMessage t) (str t))))))
+
+(defn- whole-scene-view
+  "`state` zoomed out until the whole scene is on the window. A snapshot
+  cannot be scrolled, so anything off the window would be lost."
+  [state]
+  (let [dims (view-dims)
+        fitted (events/fit-view state dims)]
+    (when-not (events/scene-visible? fitted dims)
+      (binding [*out* *err*]
+        (println "UML viewer: snapshot is cropped; the diagram does not fit at the smallest zoom.")))
+    fitted))
+
+(defn- snapshot-setup [state]
+  (q/frame-rate 30)
+  (q/color-mode :rgb)
+  (q/smooth)
+  (q/text-font (q/create-font "SansSerif" 14 true))
+  ;; Processing saves frames on a background thread by default; the JVM
+  ;; exits right after the save, so the file must be written first.
+  (q/hint :disable-async-saveframe)
+  (whole-scene-view state))
+
+(defn- snapshot-draw [state out-path]
+  (draw/draw-state state)
+  (when (>= (q/frame-count) snapshot-frame)
+    (if (q/save out-path)
+      (do (println "Saved" out-path)
+          (halt-vm!))
+      (snapshot-failed! (str "could not write " out-path)))))
+
+(defn snapshot!
+  "Draw `state` in the main window, save that window to `out-path` as a
+  PNG, and exit the JVM. No companion, mailbox, or reload is involved."
+  [state out-path]
+  (q/sketch
+    :title "UML viewer"
+    :size [window-width window-height]
+    :setup (fn [] (snapshot-step #(snapshot-setup state)))
+    :draw (fn [state] (snapshot-step #(snapshot-draw state out-path)))
+    :middleware [m/fun-mode]))

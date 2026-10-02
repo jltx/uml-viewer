@@ -4,3 +4,6 @@ target
 .DS_Store
 .uml-viewer/
 uml-viewer-log.txt
+examples/go-demo.edn
+spec/fixtures/go/demo/.metrics/
+spec/fixtures/go/demo/target/
