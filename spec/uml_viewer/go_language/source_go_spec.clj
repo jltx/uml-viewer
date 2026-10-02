@@ -221,10 +221,13 @@
              (searched-line "RowSet.Kind")))
 
   (it "finds the same lines in a source with CRLF line endings"
-    (should= (line-of declaration-forms "	Store struct{}")
-             (source/start-line source-go/impl
-                                (str/join "\r\n" declaration-forms)
-                                {:name "Store"})))
+    (let [crlf-line #(source/start-line source-go/impl
+                                        (str/join "\r\n" declaration-forms)
+                                        {:name %})]
+      (should= (searched-line "Store") (crlf-line "Store"))
+      (should= (searched-line "Open") (crlf-line "Open"))
+      (should= (searched-line "Cache.Get") (crlf-line "Cache.Get"))
+      (should= (line-of declaration-forms "\tStore struct{}") (crlf-line "Store"))))
 
   (it "is nil for a member the source does not declare"
     (should-be-nil (searched-line "Missing"))
