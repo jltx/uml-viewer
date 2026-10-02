@@ -221,7 +221,8 @@ func canonicalDir(dir string) (string, error) {
 	}
 	resolved, err := filepath.EvalSymlinks(absolute)
 	if err != nil {
-		return "", err
+		// some Windows volume mount points and container bind mounts cannot be resolved
+		return filepath.Clean(absolute), nil
 	}
 	return filepath.Clean(resolved), nil
 }

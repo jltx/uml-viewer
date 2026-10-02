@@ -362,6 +362,17 @@ func TestProgramInModuleSubdirectoryExitsOneNamingTheModuleRoot(t *testing.T) {
 	}
 }
 
+func TestCanonicalDirFallsBackToTheCleanedAbsolutePathWhenSymlinksCannotBeResolved(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "no-such-dir")
+	got, err := canonicalDir(missing + string(filepath.Separator) + ".")
+	if err != nil {
+		t.Fatalf("canonicalDir(%q): %v", missing, err)
+	}
+	if got != missing {
+		t.Fatalf("canonicalDir = %q, want %q", got, missing)
+	}
+}
+
 func mustScan(t *testing.T, moduleDir, goos string) moduleReport {
 	t.Helper()
 	report, err := scanModule(moduleDir, goos, "")
