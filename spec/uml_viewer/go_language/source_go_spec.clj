@@ -57,13 +57,21 @@
                                               :line 13
                                               :lang :go})))
 
-  (it "returns nil for a named member without a line"
-    (should-be-nil (source/member-source :go {:name "Query" :file query-file :lang :go})))
+  (it "finds a named member without a line by its declaration"
+    (should= (line-starting-with query-file "func Query")
+             (:line (source/member-source :go {:name "Query" :file query-file :lang :go}))))
 
-  (it "returns nil for a line past the end of the file"
-    (should-be-nil (source/member-source :go {:name "Query"
+  (it "finds a named member whose line is past the end of the file"
+    (should= (line-starting-with query-file "func Query")
+             (:line (source/member-source :go {:name "Query"
+                                               :file query-file
+                                               :line 9999
+                                               :lang :go}))))
+
+  (it "returns nil for a named member the file does not declare"
+    (should-be-nil (source/member-source :go {:name "Missing"
                                               :file query-file
-                                              :line 9999
+                                              :line 13
                                               :lang :go})))
 
   (it "opens the class-level file with no line for a module row"
@@ -78,6 +86,143 @@
              (source/title source-go/impl {:file query-file :name "Query"}))
     (should= "example.com.demo.store/Query"
              (source/title source-go/impl {:ns "example.com.demo.store" :name "Query"}))))
+
+(defn- source-of [lines]
+  (str/join "\n" lines))
+
+(defn- line-of [lines declaration]
+  (inc (.indexOf ^java.util.List lines declaration)))
+
+(defn- found-line [lines ident]
+  (source/start-line source-go/impl (source-of lines) ident))
+
+(def ^:private two-string-methods
+  ["package store"
+   ""
+   "func (s Store) String() string { return s.name }"
+   ""
+   "func (r Row) String() string { return r.text }"])
+
+(def ^:private row-string-line-before-edit
+  (line-of two-string-methods "func (r Row) String() string { return r.text }"))
+
+(def ^:private declaration-forms
+  ["package store"
+   ""
+   "type RowSet []Row"
+   ""
+   "type ("
+   "\t// Row is one result."
+   "\tRow struct {"
+   "\t\tStore Store"
+   "\t}"
+   "\tStore struct{}"
+   ")"
+   ""
+   "type Cache[K comparable, V any] struct {"
+   "\tentries map[K]V"
+   "}"
+   ""
+   "type Alias = Row"
+   ""
+   "func OpenAll() {}"
+   ""
+   "func Open(name string) *Store { return nil }"
+   ""
+   "func Map[T any](items []T) []T { return items }"
+   ""
+   "func (s *Store) Close() error { return nil }"
+   ""
+   "func (Row) Kind() string { return \"row\" }"
+   ""
+   "func (*Row) Reset() {}"
+   ""
+   "func (set RowSet) Kind() string { return \"set\" }"
+   ""
+   "func (c *Cache[K, V]) Get(key K) (V, bool) {"
+   "\tvalue, found := c.entries[key]"
+   "\treturn value, found"
+   "}"
+   ""
+   "func init() {}"
+   ""
+   "func init() {}"])
+
+(defn- searched-line [member-name]
+  (found-line declaration-forms {:name member-name}))
+
+(describe "go declaration line"
+  (it "follows a declaration that moved below its recorded line"
+    (let [edited (concat (take 4 two-string-methods)
+                         ["// String joins the row's" "// values with commas."]
+                         (drop 4 two-string-methods))]
+      (should= "// String joins the row's" (nth edited (dec row-string-line-before-edit)))
+      (should= (+ 2 row-string-line-before-edit)
+               (found-line edited {:name "Row.String"
+                                   :line row-string-line-before-edit}))))
+
+  (it "does not take another receiver's method for the member"
+    (let [edited (into ["package store" "" "import \"strings\"" ""]
+                       (drop 2 two-string-methods))]
+      (should= "func (s Store) String() string { return s.name }"
+               (nth edited (dec row-string-line-before-edit)))
+      (should= (+ 2 row-string-line-before-edit)
+               (found-line edited {:name "Row.String"
+                                   :line row-string-line-before-edit}))))
+
+  (it "keeps a recorded line that declares the member"
+    (let [second-init (+ 2 (line-of declaration-forms "func init() {}"))]
+      (should= second-init (found-line declaration-forms {:name "init" :line second-init}))
+      (should= (- second-init 2) (found-line declaration-forms {:name "init" :line 1}))))
+
+  (it "finds a method on a pointer receiver"
+    (should= (line-of declaration-forms "func (s *Store) Close() error { return nil }")
+             (searched-line "Store.Close")))
+
+  (it "finds a method whose receiver has no variable name"
+    (should= (line-of declaration-forms "func (Row) Kind() string { return \"row\" }")
+             (searched-line "Row.Kind"))
+    (should= (line-of declaration-forms "func (*Row) Reset() {}")
+             (searched-line "Row.Reset")))
+
+  (it "finds a method on a generic receiver"
+    (should= (line-of declaration-forms "func (c *Cache[K, V]) Get(key K) (V, bool) {")
+             (searched-line "Cache.Get")))
+
+  (it "finds a function, with or without type parameters"
+    (should= (line-of declaration-forms "func Open(name string) *Store { return nil }")
+             (searched-line "Open"))
+    (should= (line-of declaration-forms "func Map[T any](items []T) []T { return items }")
+             (searched-line "Map")))
+
+  (it "finds a type, a generic type, and an alias"
+    (should= (line-of declaration-forms "type RowSet []Row") (searched-line "RowSet"))
+    (should= (line-of declaration-forms "type Cache[K comparable, V any] struct {")
+             (searched-line "Cache"))
+    (should= (line-of declaration-forms "type Alias = Row") (searched-line "Alias")))
+
+  (it "finds a type declared inside a type block, past a field of the same name"
+    (should= (line-of declaration-forms "\tRow struct {") (searched-line "Row"))
+    (should= (line-of declaration-forms "\tStore struct{}") (searched-line "Store")))
+
+  (it "does not take a longer receiver name for the member's receiver"
+    (should= (line-of declaration-forms "func (set RowSet) Kind() string { return \"set\" }")
+             (searched-line "RowSet.Kind")))
+
+  (it "finds the same lines in a source with CRLF line endings"
+    (should= (line-of declaration-forms "	Store struct{}")
+             (source/start-line source-go/impl
+                                (str/join "\r\n" declaration-forms)
+                                {:name "Store"})))
+
+  (it "is nil for a member the source does not declare"
+    (should-be-nil (searched-line "Missing"))
+    (should-be-nil (searched-line "Store.Kind"))
+    (should-be-nil (searched-line "entries")))
+
+  (it "leaves the line of an ident without a name alone"
+    (should= 7 (found-line declaration-forms {:ns "example.com.demo.store" :line 7}))
+    (should-be-nil (found-line declaration-forms {:ns "example.com.demo.store"}))))
 
 (def ^:private store-class
   (delay (->> (graph/scan graph-go/impl fixture-root {:prefix "example.com.demo"
