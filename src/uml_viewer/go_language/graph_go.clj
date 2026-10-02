@@ -17,12 +17,15 @@
 (defn- helper-process
   "The command that runs the goscan helper and the environment it runs in,
   given the `environment` of this process. `go run` must build the helper for
-  the host, so GOOS and GOARCH leave the environment and the target GOOS, from
-  `go-opts` or else from `environment`, goes to the helper as a flag."
+  the host, so GOOS and GOARCH leave the environment and go to the helper as
+  flags: the target GOOS from `go-opts` or else from `environment`, the
+  target GOARCH from `environment`."
   [go-opts environment]
-  (let [target-goos (or (:goos go-opts) (get environment "GOOS"))]
+  (let [target-goos (or (:goos go-opts) (get environment "GOOS"))
+        target-goarch (get environment "GOARCH")]
     {:command (cond-> [*go-executable* "run" (helper-source-path)]
-                target-goos (conj "-goos" target-goos))
+                target-goos (conj "-goos" target-goos)
+                target-goarch (conj "-goarch" target-goarch))
      :environment (dissoc environment "GOOS" "GOARCH")}))
 
 (defn- start-helper [root go-opts stderr-file]

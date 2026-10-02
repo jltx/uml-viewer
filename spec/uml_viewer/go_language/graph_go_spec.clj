@@ -104,13 +104,26 @@
         (should-contain (str "store/store_" non-host-goos ".go")
                         (:files (last (:packages facts)))))))
 
-  (it "builds the helper for the host and names the target GOOS as a flag"
-    (let [environment {"GOOS" "plan9" "GOARCH" "arm64" "GOFLAGS" "-mod=mod"}
-          goos-flag #(take-last 2 (:command (helper-process % environment)))]
+  (it "builds the helper for the host and names the target GOOS and GOARCH as flags"
+    (let [environment {"GOOS" "linux" "GOARCH" "arm64" "GOFLAGS" "-mod=mod"}
+          target-flags #(drop 3 (:command (helper-process %1 %2)))]
       (should= {"GOFLAGS" "-mod=mod"} (:environment (helper-process nil environment)))
-      (should= ["-goos" "plan9"] (goos-flag nil))
-      (should= ["-goos" "linux"] (goos-flag {:goos "linux"}))
-      (should-not-contain "-goos" (:command (helper-process nil {"GOFLAGS" "-mod=mod"})))))
+      (should= ["-goos" "linux" "-goarch" "arm64"] (target-flags nil environment))
+      (should= ["-goos" "plan9" "-goarch" "arm64"] (target-flags {:goos "plan9"} environment))
+      (should= [] (target-flags nil {"GOFLAGS" "-mod=mod"}))))
+
+  (it "scans the files of a GOARCH set in the environment"
+    (with-go
+      (let [module-root (temp-module "example.com/archdemo"
+                                     {"x_amd64.go" "package archdemo\n\nfunc OnAmd64() {}\n"
+                                      "x_arm64.go" "package archdemo\n\nfunc OnArm64() {}\n"})
+            archdemo-package #(-> (with-helper-environment {"GOARCH" %}
+                                    (fn [] (graph-go/scan-facts module-root {:goos "linux"})))
+                                  :packages
+                                  first)]
+        (should= ["x_arm64.go"] (:files (archdemo-package "arm64")))
+        (should= ["OnArm64"] (map :name (:decls (archdemo-package "arm64"))))
+        (should= ["x_amd64.go"] (:files (archdemo-package "amd64"))))))
 
   (it "throws naming the Go toolchain when the go program cannot be started"
     (let [failure (with-bindings {#'graph-go/*go-executable* "no-such-go-program"}

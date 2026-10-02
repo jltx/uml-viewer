@@ -575,7 +575,8 @@ directory that holds only tests makes no class. Build constraints apply, so
 a file for another operating system is not scanned. `:go {:goos "linux"}`
 selects the `GOOS` the scan assumes. It is the only setting you can pass.
 When the policy has no `:goos`, a `GOOS` in the environment does the same.
-`GOARCH` is not passed to the scan. Everything else (`GOFLAGS`,
+A `GOARCH` in the environment applies to the scan too; the policy has no
+key for the architecture. Everything else (`GOFLAGS`,
 `CGO_ENABLED`, build tags, and so on) comes from the environment. A
 `:goos` that differs from the host turns cgo off by default, so cgo files
 are not listed. Top-level functions, methods, and
