@@ -251,6 +251,52 @@
                                      store-package
                                      ["store/query.go"]))))
 
+(def ^:private tool-package
+  {:import-path "example.com/demo/cmd/tool"
+   :ns "example.com.demo.cmd.tool"
+   :name "main"
+   :dir "cmd/tool"
+   :files ["cmd/tool/flags.go" "cmd/tool/render.go"]
+   :decls [{:name "init" :kind :func :file "cmd/tool/flags.go" :line 5 :exported false}
+           {:name "parseFlags" :kind :func :file "cmd/tool/flags.go" :line 9 :exported false}
+           {:name "init" :kind :func :file "cmd/tool/render.go" :line 5 :exported false}
+           {:name "render" :kind :func :file "cmd/tool/render.go" :line 9 :exported false}]})
+
+(def ^:private flags-file-forms
+  [(mutation-form "defn-/init" 1 0) (mutation-form "defn-/parseFlags" 2 1)])
+
+(def ^:private render-file-forms
+  [(mutation-form "defn-/init" 0 3) (mutation-form "defn-/render" 4 0)])
+
+(def ^:private forms-of-uniquely-named-functions
+  [(mutation-form "defn-/parseFlags" 2 1) (mutation-form "defn-/render" 4 0)])
+
+(describe "go mutation form merge of a name declared in several files"
+  (it "leaves the name out of a run over every file"
+    (should= forms-of-uniquely-named-functions
+             (metrics-go/merge-forms []
+                                     (concat flags-file-forms render-file-forms)
+                                     tool-package
+                                     (:files tool-package))))
+
+  (it "gives the same forms when one file is measured again, however often"
+    (let [after-full-run (metrics-go/merge-forms []
+                                                 (concat flags-file-forms render-file-forms)
+                                                 tool-package
+                                                 (:files tool-package))
+          measure-flags-file-again #(metrics-go/merge-forms %
+                                                            flags-file-forms
+                                                            tool-package
+                                                            ["cmd/tool/flags.go"])
+          after-one-partial-run (measure-flags-file-again after-full-run)]
+      (should= forms-of-uniquely-named-functions after-one-partial-run)
+      (should= forms-of-uniquely-named-functions
+               (measure-flags-file-again after-one-partial-run))))
+
+  (it "removes a form of the name that an earlier snapshot holds"
+    (should= [(mutation-form "defn-/render" 4 0)]
+             (metrics-go/merge-forms render-file-forms [] tool-package []))))
+
 (def ^:private fixture-root "spec/fixtures/go/demo")
 
 (def ^:private go-installed?

@@ -134,15 +134,20 @@
   "The mutation snapshot forms of `package` after a run of `measured-files`:
   `new-forms` stand in for every earlier form of a function declared in a
   measured file, forms of functions in other files stay, and forms of
-  functions the package no longer declares are left out."
+  functions the package no longer declares are left out. A name declared
+  more than once (every file may hold an `init`) is left out as well: its
+  forms cannot be told apart."
   [existing-forms new-forms package measured-files]
   (let [measured (set measured-files)
-        file-of-function (into {} (map (juxt :name :file)) (function-decls package))
+        decls-of-function (group-by :name (function-decls package))
+        declared-more-than-once? (fn [form]
+                                   (< 1 (count (decls-of-function (form-function-name form)))))
         in-unmeasured-file? (fn [form]
-                              (let [file (file-of-function (form-function-name form))]
-                                (and file (not (measured file)))))]
+                              (when-let [[decl] (decls-of-function (form-function-name form))]
+                                (not (measured (:file decl)))))]
     (->> existing-forms
          (filter in-unmeasured-file?)
          (concat new-forms)
+         (remove declared-more-than-once?)
          (sort-by :id)
          vec)))
