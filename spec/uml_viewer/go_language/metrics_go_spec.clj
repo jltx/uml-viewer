@@ -85,3 +85,63 @@
                                             (crap-row "Store.Close" "store" 2 100.0 2.0)
                                             (crap-row "platformName" "store" 1 0.0 2.0)]
                                            store-package)))))
+
+(def ^:private mutation-report
+  (str/join
+    "\n"
+    ["ok  \texample.com/demo/store\t0.336s\tcoverage: 60.0% of statements"
+     "Mutation run: store/query.go"
+     "Total mutation sites: 9"
+     "Covered mutation sites: 5"
+     "Uncovered mutation sites: 4"
+     "Changed mutation sites: 8"
+     "Manifest exists: false"
+     "Selected mutation sites: 5"
+     "Uncovered mutations:"
+     "  line 3 > -> >= "
+     "  line 22 == -> != func/normalize"
+     "  line 22 0 -> 1 func/normalize"
+     "  line 26 false -> true func/Row.String"
+     "ok  \texample.com/demo/store\t0.271s"
+     "ok  \texample.com/demo/store\t0.288s"
+     "[1/5] survived line 18 >= -> >: func/Store.Close"
+     "--- FAIL: TestOpen (0.00s)"
+     "    store_test.go:12: unexpected store string: \"store\""
+     "FAIL"
+     "FAIL\texample.com/demo/store\t0.284s"
+     "FAIL"
+     "[2/5] killed line 18 0 -> 1: func/Store.Close"
+     "[3/5] timeout line 19 true -> false: func/Store.Close"
+     "[4/5] killed line 19 != -> ==: func/Store.Close"
+     "[5/5] killed line 3 > -> >=: "
+     ""
+     "Mutation Report"
+     "==============="
+     "Killed: 4"
+     "Survived: 1"
+     "Uncovered: 4"
+     ""
+     "Survivors:"
+     "  line 18 >= -> > func/Store.Close"
+     ""]))
+
+(describe "go mutation report"
+  (it "counts killed, survived, and uncovered sites per function amid test output"
+    (should= [{:name "Row.String" :killed 0 :survived 0 :uncovered 1}
+              {:name "Store.Close" :killed 3 :survived 1 :uncovered 0}
+              {:name "normalize" :killed 0 :survived 0 :uncovered 2}]
+             (metrics-go/parse-mutation-report mutation-report)))
+
+  (it "counts a timeout as killed"
+    (should= [{:name "Store.Close" :killed 1 :survived 0 :uncovered 0}]
+             (metrics-go/parse-mutation-report
+               "[1/1] timeout line 19 true -> false: func/Store.Close\n")))
+
+  (it "takes uncovered sites from the uncovered block only"
+    (should= [{:name "Store.Close" :killed 0 :survived 1 :uncovered 0}]
+             (metrics-go/parse-mutation-report
+               (str/join "\n" ["[1/1] survived line 18 >= -> >: func/Store.Close"
+                               ""
+                               "Survivors:"
+                               "  line 18 >= -> > func/Store.Close"
+                               ""])))))

@@ -52,3 +52,44 @@
                   :complexity (:complexity row)
                   :coverage (:coverage row)
                   :crap (:crap row)})))))
+
+(def ^:private mutant-progress-line
+  #"\[\d+/\d+\] (killed|survived|timeout) line \d+ .*: func/(\S+)")
+
+(def ^:private uncovered-site-line #"  line \d+ .* func/(\S+)")
+
+(def ^:private outcome-of-status
+  {"killed" :killed "timeout" :killed "survived" :survived})
+
+(defn- tested-site [line]
+  (when-let [[_ status function-name] (re-matches mutant-progress-line line)]
+    [function-name (outcome-of-status status)]))
+
+(defn- uncovered-site [line]
+  (when-let [[_ function-name] (re-matches uncovered-site-line line)]
+    [function-name :uncovered]))
+
+(defn- uncovered-block
+  "The site lines under the heading. The survivors list at the end of the
+  report has the same line shape, so only this block may be read."
+  [lines]
+  (->> lines
+       (drop-while #(not= "Uncovered mutations:" %))
+       rest
+       (take-while #(str/starts-with? % "  line "))))
+
+(defn parse-mutation-report
+  "Per-function site counts from the output of one mutate4go run."
+  [text]
+  (let [lines (str/split-lines text)
+        sites (concat (keep tested-site lines)
+                      (keep uncovered-site (uncovered-block lines)))
+        counts-by-function (reduce (fn [counts [function-name outcome]]
+                                     (update-in counts [function-name outcome] (fnil inc 0)))
+                                   {}
+                                   sites)]
+    (->> counts-by-function
+         (map (fn [[function-name counts]]
+                (merge {:name function-name :killed 0 :survived 0 :uncovered 0} counts)))
+         (sort-by :name)
+         vec)))
