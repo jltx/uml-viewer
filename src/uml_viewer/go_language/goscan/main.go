@@ -218,7 +218,8 @@ func parseDecls(moduleDir, relativeFile string) ([]declReport, error) {
 
 	var decls []declReport
 	emit := func(name, kind string, identifier *ast.Ident) {
-		position := fileSet.Position(identifier.Pos())
+		// physical position: //line directives in generated code name another file and line
+		position := fileSet.PositionFor(identifier.Pos(), false)
 		decls = append(decls, declReport{
 			Name:     name,
 			Kind:     kind,

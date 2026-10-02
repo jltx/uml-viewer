@@ -238,6 +238,27 @@ func TestDeclsOnTheSameLineKeepSourceOrder(t *testing.T) {
 	}
 }
 
+func TestLineDirectivesDoNotMoveDeclarations(t *testing.T) {
+	moduleDir := copyFixtureToTemp(t)
+	writeFile(t, filepath.Join(moduleDir, "demo_generated.go"),
+		"package demo\n\nfunc First() {}\n\n//line grammar.y:900\nfunc Second() {}\n\n//line grammar.y:5\nfunc Third() {}\n")
+	root := findPackage(t, mustScan(t, moduleDir, "linux"), "example.com/demo")
+	var names []string
+	var lines []int
+	for _, decl := range root.Decls {
+		if decl.File == "demo_generated.go" {
+			names = append(names, decl.Name)
+			lines = append(lines, decl.Line)
+		}
+	}
+	if !equalStrings(names, []string{"First", "Second", "Third"}) {
+		t.Fatalf("decls under the file's real path = %v", names)
+	}
+	if lines[0] != 3 || lines[1] != 6 || lines[2] != 9 {
+		t.Fatalf("lines = %v, want the physical lines [3 6 9]", lines)
+	}
+}
+
 func TestPackageWhoseFilesAreAllExcludedIsOmitted(t *testing.T) {
 	moduleDir := copyFixtureToTemp(t)
 	writeFile(t, filepath.Join(moduleDir, "extra", "extra_windows.go"),
