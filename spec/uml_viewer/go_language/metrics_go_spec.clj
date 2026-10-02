@@ -208,3 +208,24 @@
              (metrics-go/merge-crap [(crap-entry "example.com.demo.store" "Store.Close" 6.0)]
                                     [(crap-entry "example.com.demo" "Version" 1.0)]
                                     ["example.com.demo"]))))
+
+(defn- mutation-form [id killed survived]
+  {:id id :killed killed :survived survived :uncovered 0 :sites (+ killed survived)})
+
+(describe "go mutation form merge"
+  (it "replaces a form that ran again and keeps the forms of other functions, sorted"
+    (should= [(mutation-form "defn-/normalize" 2 0)
+              (mutation-form "defn/Store.Close" 3 0)
+              (mutation-form "defn/Store.String" 1 0)]
+             (metrics-go/merge-forms [(mutation-form "defn/Store.String" 1 0)
+                                      (mutation-form "defn/Store.Close" 1 2)]
+                                     [(mutation-form "defn/Store.Close" 3 0)
+                                      (mutation-form "defn-/normalize" 2 0)]
+                                     store-package)))
+
+  (it "drops a stale form whose function the package no longer declares"
+    (should= [(mutation-form "defn/Store.Close" 1 2)]
+             (metrics-go/merge-forms [(mutation-form "defn/Deleted" 4 0)
+                                      (mutation-form "defn/Store.Close" 1 2)]
+                                     []
+                                     store-package))))

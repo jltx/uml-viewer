@@ -129,3 +129,18 @@
          (concat new-entries)
          (sort-by (juxt :namespace :name))
          vec)))
+
+(defn- form-function-name [form]
+  (str/replace (:id form) #"^defn-?/" ""))
+
+(defn merge-forms
+  "The mutation snapshot forms of `package` after a run: a new form stands in
+  for the earlier form with its id, and forms of functions the package no
+  longer declares are left out."
+  [existing-forms new-forms package]
+  (let [declared (function-names package)
+        form-by-id (into {} (map (juxt :id identity)) (concat existing-forms new-forms))]
+    (->> (vals form-by-id)
+         (filter #(declared (form-function-name %)))
+         (sort-by :id)
+         vec)))
