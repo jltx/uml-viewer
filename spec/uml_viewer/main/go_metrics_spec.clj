@@ -1,6 +1,7 @@
 (ns uml-viewer.main.go-metrics-spec
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [speclj.core :refer :all]
             [uml-viewer.main.go-metrics :as go-metrics]))
 
@@ -90,4 +91,30 @@
         (should= first-snapshot second-snapshot)
         (should-contain "example.com.demo.store" measured-namespaces)
         (should-contain "example.com.demo" measured-namespaces)
-        (should= 1 (count (filter #(= "platformName" (:name %)) entries)))))))
+        (should= 1 (count (filter #(= "platformName" (:name %)) entries))))))
+
+  (it "keeps the earlier entries of a package whose tests fail and measures the others"
+    (with-tools
+      (let [module-root (temp-copy-of-fixture)
+            policy-path (write-policy module-root)
+            earlier-store-entry {:namespace "example.com.demo.store"
+                                 :name "Store.Close"
+                                 :complexity 7
+                                 :coverage 12.5
+                                 :crap 39.8}]
+        (spit (io/file module-root "store" "store_test.go")
+              "
+func TestAlwaysFails(t *testing.T) { t.Fatal(\"failing on purpose\") }
+"
+              :append true)
+        (io/make-parents (crap-snapshot-file module-root))
+        (spit (crap-snapshot-file module-root) (pr-str {:entries [earlier-store-entry]}))
+        (let [{:keys [status output]} (run-captured "crap" policy-path {})
+              entries (:entries (edn/read-string (slurp (crap-snapshot-file module-root))))]
+          (should= 1 status)
+          (should-contain "not measured: example.com/demo/store" (str/split-lines output))
+          (should= [earlier-store-entry]
+                   (filter #(= "example.com.demo.store" (:namespace %)) entries))
+          (should= ["Version"]
+                   (map :name (filter #(= "example.com.demo" (:namespace %)) entries)))
+          (should-contain "example.com.demo.internal.util" (set (map :namespace entries))))))))
