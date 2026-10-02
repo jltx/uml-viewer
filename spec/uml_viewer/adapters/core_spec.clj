@@ -92,7 +92,11 @@
 
   (it "describes --snapshot and --focus in the help"
     (should (re-find #"--snapshot" core/help-text))
-    (should (re-find #"--focus" core/help-text))))
+    (should (re-find #"--focus" core/help-text)))
+
+  (it "says snapshot mode acts on no mail, since the mailbox is still read"
+    (should (re-find #"no\s+mail is acted on" core/help-text))
+    (should-not (re-find #"mail is read" core/help-text))))
 
 (describe "focus"
   (it "opens each node along a dotted id"
