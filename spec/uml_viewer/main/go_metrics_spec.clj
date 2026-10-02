@@ -95,6 +95,31 @@
                  output)
         (should-not (.exists (io/file module-root ".metrics")))))))
 
+(defn- temp-module-with-syntax-error []
+  (let [module-root (io/file (System/getProperty "java.io.tmpdir")
+                             (str "uml-go-broken-" (System/nanoTime)))]
+    (io/make-parents (io/file module-root "go.mod"))
+    (spit (io/file module-root "go.mod") "module example.com/broken
+
+go 1.21
+")
+    (spit (io/file module-root "broken.go") "package broken
+
+func {
+")
+    module-root))
+
+(describe "go metrics scan failure"
+  (it "prints the message of a failed scan, naming the file, and returns 1"
+    (with-tools
+      (let [module-root (temp-module-with-syntax-error)
+            policy-file (io/file module-root "broken.policy.edn")]
+        (spit policy-file (pr-str {:lang :go :src (.getPath module-root)}))
+        (let [{:keys [status output]} (run-captured "crap" (.getPath policy-file) {})]
+          (should= 1 status)
+          (should-contain "broken.go" output)
+          (should-not (.exists (io/file module-root ".metrics"))))))))
+
 (defn- tool-leftovers-in-fixture
   "What a tool run inside the tracked fixture would leave behind. `target` is
   git-ignored, so `git status` alone would not show such a run."

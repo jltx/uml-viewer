@@ -200,8 +200,6 @@
           (:since opts) (measure-since command module-root go-opts (:since opts))
           :else (measure command module-root go-opts nil))
         (catch clojure.lang.ExceptionInfo failure
-          (when-not (:missing-executable (ex-data failure))
-            (throw failure))
           (println (ex-message failure))
           1)))))
 
