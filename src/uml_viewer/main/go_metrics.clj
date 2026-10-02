@@ -27,11 +27,13 @@
                     (.redirectOutput output-file))]
     (try
       (let [process (try (.start builder)
-                         (catch java.io.IOException _
+                         (catch java.io.IOException not-started
                            (throw (ex-info (str (first command) " not found on PATH")
-                                           {:missing-executable (first command)}))))]
+                                           {:missing-executable (first command)}
+                                           not-started))))]
         (.close (.getOutputStream process))
-        {:exit (.waitFor process) :output (slurp output-file)})
+        (let [exit (.waitFor process)]
+          {:exit exit :output (slurp output-file)}))
       (finally (.delete output-file)))))
 
 (defn- sh-starts? [module-root]
@@ -199,6 +201,7 @@
                                              1)
           (:since opts) (measure-since command module-root go-opts (:since opts))
           :else (measure command module-root go-opts nil))
+        ;; every ex-info raised in here is a printable startup or scan failure
         (catch clojure.lang.ExceptionInfo failure
           (println (ex-message failure))
           1)))))
