@@ -327,9 +327,18 @@ func TestDirectoryWithoutGoModFails(t *testing.T) {
 	}
 }
 
+func resolvedFixtureDir(t *testing.T) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(fixtureDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
+}
+
 func TestScanInModuleSubdirectoryFailsNamingTheModuleRoot(t *testing.T) {
-	moduleRoot := fixtureDir(t)
-	_, err := scanModule(filepath.Join(moduleRoot, "store"), "linux", "")
+	moduleRoot := resolvedFixtureDir(t)
+	_, err := scanModule(filepath.Join(fixtureDir(t), "store"), "linux", "")
 	if err == nil {
 		t.Fatal("want an error when the directory is a subdirectory of the module")
 	}
@@ -339,8 +348,8 @@ func TestScanInModuleSubdirectoryFailsNamingTheModuleRoot(t *testing.T) {
 }
 
 func TestProgramInModuleSubdirectoryExitsOneNamingTheModuleRoot(t *testing.T) {
-	moduleRoot := fixtureDir(t)
-	stdout, stderr, err := runProgram(t, filepath.Join(moduleRoot, "store"), "-goos", "linux")
+	moduleRoot := resolvedFixtureDir(t)
+	stdout, stderr, err := runProgram(t, filepath.Join(fixtureDir(t), "store"), "-goos", "linux")
 	var exitErr *exec.ExitError
 	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
 		t.Fatalf("want exit code 1, got %v", err)
