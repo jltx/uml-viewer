@@ -209,7 +209,7 @@ func requireModuleRoot(workingDir, moduleRoot string) error {
 		return err
 	}
 	if !samePath(resolvedWorkingDir, resolvedModuleRoot) {
-		return fmt.Errorf("%s is not the module root; run goscan in %s", resolvedWorkingDir, resolvedModuleRoot)
+		return fmt.Errorf("%s is not the module root: set :src to %s", resolvedWorkingDir, resolvedModuleRoot)
 	}
 	return nil
 }

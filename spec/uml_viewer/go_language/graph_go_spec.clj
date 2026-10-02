@@ -126,6 +126,7 @@
             module-root (.getCanonicalPath (io/file fixture-root))]
         (should-not-be-nil failure)
         (should-contain "is not the module root" (ex-message failure))
+        (should-contain "set :src to" (ex-message failure))
         (should-contain (str/lower-case module-root) (str/lower-case (ex-message failure))))))
 
   (it "throws with the helper's stderr when the helper fails"

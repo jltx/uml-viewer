@@ -345,6 +345,9 @@ func TestScanInModuleSubdirectoryFailsNamingTheModuleRoot(t *testing.T) {
 	if !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(moduleRoot)) {
 		t.Fatalf("error does not name the module root %q: %v", moduleRoot, err)
 	}
+	if !strings.Contains(err.Error(), "set :src to") {
+		t.Fatalf("error does not tell the user to set :src: %v", err)
+	}
 }
 
 func TestProgramInModuleSubdirectoryExitsOneNamingTheModuleRoot(t *testing.T) {
