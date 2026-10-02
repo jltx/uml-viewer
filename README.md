@@ -160,6 +160,7 @@ C:\tools\uml-viewer\scripts\uml.ps1 -Restart examples\store-service.edn
 
 `scripts\uml.ps1 [-Restart] [-Help] [diagram.edn]` finds the uml-viewer
 checkout from its own location and runs from the current directory. It
+needs a `clojure` executable on `PATH` (for example scoop's `clj-deps`). It
 starts the viewer detached and appends the output to
 **`uml-viewer-log.txt`** in that directory. `-Restart` passes `--restart`.
 With no `diagram.edn`, `-Restart` picks `examples\<project>.edn`, or the
@@ -572,10 +573,12 @@ path with dots for slashes. A package that imports another package of the
 module is a `:dependency`. Test files (`*_test.go`) are not scanned, so a
 directory that holds only tests makes no class. Build constraints apply, so
 a file for another operating system is not scanned. `:go {:goos "linux"}`
-selects the `GOOS` the scan assumes. It is the only setting you can pass;
-everything else (`GOFLAGS`, `CGO_ENABLED`, build tags, and so on) comes
-from the environment. A `:goos` that differs from the host turns cgo off by
-default, so cgo files are not listed. Top-level functions, methods, and
+selects the `GOOS` the scan assumes. It is the only setting you can pass.
+When the policy has no `:goos`, a `GOOS` in the environment does the same.
+`GOARCH` is not passed to the scan. Everything else (`GOFLAGS`,
+`CGO_ENABLED`, build tags, and so on) comes from the environment. A
+`:goos` that differs from the host turns cgo off by default, so cgo files
+are not listed. Top-level functions, methods, and
 types are the members (`:ops`). Constants and variables are not. A member
 whose name starts with a lower-case letter is private.
 
@@ -614,9 +617,19 @@ Limits:
   one card row. They get no metrics.
 - The tree view titles a box from the last segment of its id, capitalized:
   `cmd.demo` is titled `Demo`, even though its package is named `main`.
-- Each member remembers the file and line of its declaration, as a path
-  relative to the directory where `clojure -M:ir` ran. Run the viewer from
-  that directory, or the source file is not found.
+- Two packages of the module that map to one class id make `clojure -M:ir`
+  fail with an error that names both import paths. For a module
+  `example.com/demo`, the root package and a top-level directory `demo`
+  both map to `:demo`.
+- Each member and class keeps the file of its declaration. The path is
+  relative to the directory where `clojure -M:ir` ran when the module is
+  inside that directory, and absolute when it is not. Run the viewer from
+  that same directory, or the source file is not found. A member whose
+  recorded line no longer holds its declaration (the file changed after the
+  scan) is found again by a search of the file.
+- When `go` is not on `PATH`, the scan fails with a message that starts
+  `Go toolchain not found on PATH`. When `:src` is not a directory, it fails
+  with `Go module root not found: <dir>`.
 
 `merge-scans` links a TypeScript `invoke("read_text")` to the Rust class
 that owns `#[tauri::command] fn read_text`, as a `:dependency`. Two
@@ -628,7 +641,8 @@ tools; for Go see [Go metrics](#go-metrics). The overlay joins a snapshot
 to the class whose `:ns` equals that namespace. Otherwise the class id
 owns that name (`bookwriter.model` owns `model`), a dotted child rolls up
 (`pdf` owns `pdf.Layout`), and the policy prefix belongs to the single
-undotted Rust class. `::` is read as `.`. A class with no CRAP or mutation data is red.
+undotted Rust class. `::` is read as `.`. A class with no CRAP or mutation
+data is red.
 
 ### Go metrics
 
@@ -637,9 +651,11 @@ writes the `.metrics` snapshots that the overlay reads. The tools are
 separate programs and are not bundled: put `crap4go` and `mutate4go` (from
 [github.com/unclebob/crap4go](https://github.com/unclebob/crap4go) and
 [github.com/unclebob/mutate4go](https://github.com/unclebob/mutate4go))
-and `go` on `PATH`. The runner starts every test command with `sh -c`, so
-`sh` must be on `PATH` too. On Windows, run from Git Bash or add Git's
-`usr\bin` to `PATH`. Without `sh` the run stops with a one-line message.
+and `go` on `PATH`. The two tools run the test command through `sh -c`, so
+`sh` must be on `PATH` too. The runner only checks that `sh` starts. On
+Windows, run from Git Bash or add Git's `usr\bin` to `PATH`. Without `sh`
+the run prints `Go metrics need sh on PATH (run from Git Bash, or add Git's
+usr\bin to PATH)` and exits 1.
 
 From this checkout, with the policy's `:src` pointing at the module (an
 absolute path is fine):
@@ -666,22 +682,33 @@ and give `:src` as an absolute path. `go`, `git`, `crap4go`, and
 What a run does:
 
 - `crap` runs `crap4go` once per package, with `go test ./<dir>` as the
-  test command, and writes `.metrics/crap.edn`. Coverage comes from that
+  test command (`go test .` for the module root package), and writes
+  `.metrics/crap.edn`. Coverage comes from that
   package's own tests only. Coverage that another package's tests give is
   not counted.
 - `mutate` runs `mutate4go` once per source file, always with
   `--mutate-all` (every mutation site, not only changed ones), and writes
   `.metrics/mutate/<import path>.edn` for each package.
-- `--since <git-ref>` limits the run to the Go source files that
-  `git diff --name-only <git-ref>...HEAD` lists. Test files do not count,
-  and neither do uncommitted changes. Entries of other packages stay in the
-  snapshot.
+- `--since <git-ref>` takes the changed files from
+  `git diff --name-only --relative <git-ref>...HEAD`, run in the module
+  root. Test files do not count, and neither do uncommitted changes. For
+  `mutate`, only the changed Go source files are mutated. For `crap`, every
+  package that holds a changed file is measured whole. Entries of other
+  packages stay in the snapshot.
 - Each tool run prints a progress line, for example
   `crap4go example.com/demo/store 0.3s`. If a tool fails, its output and a
   `failed` progress line print, the run goes on, and at the end each
   package with no result prints `not measured: <import path>`. The exit
-  status is then 1, and the earlier entries of that package stay.
-  A missing program prints `<program> not found on PATH` and exits 1.
+  status is then 1, and the earlier entries of that package stay. For
+  `mutate`, a package prints that line when any of its files could not be
+  measured, even if other files of the package were.
+- Startup failures print one message and exit 1, with no stack trace.
+  `crap4go`, `mutate4go`, and `git` print `<program> not found on PATH`.
+  A missing `sh` prints the message above. A missing `go` prints
+  `Go toolchain not found on PATH: …`. A scan that fails prints its own
+  message: `Go module root not found: <dir>`, or the `go scan of <dir>
+  failed:` text with the output of `go` (for example the file name of a
+  syntax error).
 - A function name declared more than once in a package (several `init`)
   gets no metrics and shares one card row.
 
@@ -698,10 +725,13 @@ Side effects to know before you run it:
 - A mutant that times out can leave an orphaned test process until Go's
   own test timeout ends it.
 
-The metrics describe the **host** build. The scanner's `:go {:goos …}` only
-selects the files for the diagram. With `:goos "linux"` on a Windows
-host, the diagram shows `store_linux.go` and the metrics measure
-`store_windows.go`.
+The tests run as the **host** build. With a `:goos` that differs from the
+host, the diagram and the list of files handed to `mutate` follow `:goos`,
+but the tests that give the coverage and the kills still run on the host.
+With `:goos "linux"` on a Windows host, `mutate` is pointed at
+`store_linux.go`, which the host build does not compile, so it gets no
+mutation sites. The metrics of a file that is specific to one platform
+are meaningful only when `:goos` is the host's.
 
 The viewer finds `.metrics` by walking up from the path of the diagram
 file. Keep the diagram inside the module tree (for example in the module
@@ -833,7 +863,9 @@ the Clojure extractor that Main passes in. The protocol is the seam; do
 not special-case languages in the class card.
 
 **Go** (`uml-viewer.go-language.source-go`) opens the member's `:file` at
-its `:line`, as the scanner recorded them. Clicking the class name opens the
+its `:line`, as the scanner recorded them. If that line no longer declares
+the member, it searches the file for the declaration. When the search finds
+none, the recorded line stands. Clicking the class name opens the
 package's first file.
 
 Quil stays in `adapters.draw` and `adapters.sketch`. The rest of the engine
