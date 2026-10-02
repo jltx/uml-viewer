@@ -205,6 +205,17 @@
     (should= (line-of declaration-forms "\tRow struct {") (searched-line "Row"))
     (should= (line-of declaration-forms "\tStore struct{}") (searched-line "Store")))
 
+  (it "finds a type block entry below a comment with an unmatched bracket"
+    (let [commented-block ["package store"
+                           ""
+                           "type ("
+                           "\t// 1) a row holds values"
+                           "\tRow struct{}"
+                           "\t// 2) a store holds rows"
+                           "\tStore struct{}"
+                           ")"]]
+      (should= 7 (found-line commented-block {:name "Store"}))))
+
   (it "does not take a longer receiver name for the member's receiver"
     (should= (line-of declaration-forms "func (set RowSet) Kind() string { return \"set\" }")
              (searched-line "RowSet.Kind")))

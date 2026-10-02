@@ -31,7 +31,8 @@
   (re-pattern (str "^\\s*" (literal declared-name) not-an-identifier-character)))
 
 (defn- bracket-balance [line]
-  (- (count (re-seq #"[(\[{]" line)) (count (re-seq #"[)\]}]" line))))
+  (let [code (str/replace line #"//.*" "")]
+    (- (count (re-seq #"[(\[{]" code)) (count (re-seq #"[)\]}]" code)))))
 
 (defn- type-block-depths
   "For each line, the bracket depth at its start inside a `type ( … )` block:
