@@ -147,3 +147,32 @@
           (should= {:id "defn/Store.String" :killed 1 :survived 0 :uncovered 0 :sites 1}
                    (form-with-id forms "defn/Store.String"))
           (should= first-snapshot second-snapshot))))))
+
+(describe "go metrics since a git ref"
+  (it "reads the git ref that follows --since"
+    (should= {:since "main"} (#'go-metrics/parse-options ["--since" "main"]))
+    (should= {} (#'go-metrics/parse-options [])))
+
+  (it "keeps the changed Go source files and leaves out tests and other files"
+    (should= ["store/query.go" "demo.go"]
+             (#'go-metrics/changed-go-sources
+              "store/query.go\nstore/store_test.go\nREADME.md\ndemo.go\n")))
+
+  (it "mutates only the changed files of a package"
+    (let [package {:files ["store/open.go" "store/query.go"]}]
+      (should= ["store/query.go"]
+               (#'go-metrics/files-to-mutate package ["demo.go" "store/query.go"]))
+      (should= ["store/open.go" "store/query.go"]
+               (#'go-metrics/files-to-mutate package nil))))
+
+  (it "measures nothing when git cannot list the changes"
+    (let [module-root (temp-copy-of-fixture)
+          {:keys [status]} (run-captured "crap" (write-policy module-root) {:since "main"})]
+      (should= 1 status)
+      (should-not (.exists (io/file module-root ".metrics"))))))
+
+(describe "go metrics usage"
+  (it "names the commands when the command is unknown"
+    (let [{:keys [status output]} (run-captured "coverage" "no-policy.edn" {})]
+      (should= 1 status)
+      (should-contain "(crap|mutate) <policy.edn> [--since <git-ref>]" output))))

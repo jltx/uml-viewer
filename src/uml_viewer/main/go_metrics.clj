@@ -3,6 +3,7 @@
   (:refer-clojure :exclude [run!])
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [uml-viewer.application.ir-generator :as ir-generator]
             [uml-viewer.go-language.graph-go :as graph-go]
             [uml-viewer.go-language.metrics-go :as metrics-go])
@@ -107,16 +108,56 @@
                                                       (map :file measured))}))
     (= (count runs) (count measured))))
 
+(defn- files-to-mutate [package changed-files]
+  (if (nil? changed-files)
+    (:files package)
+    (filterv (set changed-files) (:files package))))
+
 (defn- measure-mutations
   "Writes one mutation snapshot per package. Returns the packages that hold
   a file that could not be measured."
-  [module-root packages]
+  [module-root packages changed-files]
   (->> packages
        (mapv (fn [package]
                {:package package
-                :measured? (write-mutation-snapshot module-root package (:files package))}))
+                :measured? (write-mutation-snapshot module-root
+                                                    package
+                                                    (files-to-mutate package changed-files))}))
        (remove :measured?)
        (map :package)))
+
+(defn- measure
+  "Runs `command` over the packages that hold `changed-files`, or over every
+  package when `changed-files` is nil. Returns the exit status."
+  [command module-root go-opts changed-files]
+  (let [facts (graph-go/scan-facts module-root go-opts)
+        packages (metrics-go/select-packages facts changed-files)
+        unmeasured-packages (case command
+                              "crap" (measure-crap module-root packages)
+                              "mutate" (measure-mutations module-root packages changed-files))]
+    (doseq [package unmeasured-packages]
+      (println (str "not measured: " (:import-path package))))
+    (if (seq unmeasured-packages) 1 0)))
+
+(defn- changed-go-sources
+  "The Go source files, tests left out, in the output of `git diff --name-only`."
+  [git-diff-output]
+  (filterv #(and (str/ends-with? % ".go")
+                 (not (str/ends-with? % "_test.go")))
+           (str/split-lines git-diff-output)))
+
+(defn- measure-since
+  "Runs `command` over what changed between `git-ref` and HEAD. Returns the
+  exit status."
+  [command module-root go-opts git-ref]
+  (let [{:keys [exit output]} (run-process module-root
+                                           ["git" "diff" "--name-only" "--relative"
+                                            (str git-ref "...HEAD")])]
+    (if (zero? exit)
+      (measure command module-root go-opts (changed-go-sources output))
+      (do (print output)
+          (flush)
+          1))))
 
 (def ^:private sh-missing-message
   "Go metrics need sh on PATH (run from Git Bash, or add Git's usr\\bin to PATH)")
@@ -133,15 +174,21 @@
     (do (println usage)
         1)
     (let [policy (ir-generator/read-policy policy-path)
-          module-root (io/file (or (:src policy) "."))]
-      (if-not (sh-starts? module-root)
-        (do (println sh-missing-message)
-            1)
-        (let [facts (graph-go/scan-facts module-root (:go policy))
-              packages (metrics-go/select-packages facts nil)
-              unmeasured-packages (case command
-                                    "crap" (measure-crap module-root packages)
-                                    "mutate" (measure-mutations module-root packages))]
-          (doseq [package unmeasured-packages]
-            (println (str "not measured: " (:import-path package))))
-          (if (seq unmeasured-packages) 1 0))))))
+          module-root (io/file (or (:src policy) "."))
+          go-opts (:go policy)]
+      (cond
+        (not (sh-starts? module-root)) (do (println sh-missing-message)
+                                           1)
+        (:since opts) (measure-since command module-root go-opts (:since opts))
+        :else (measure command module-root go-opts nil)))))
+
+(defn- parse-options [args]
+  (let [[flag git-ref] args]
+    (if (= "--since" flag)
+      {:since git-ref}
+      {})))
+
+(defn -main [& [command policy-path & args]]
+  (let [status (run! command policy-path (parse-options args))]
+    (flush)
+    (System/exit status)))
