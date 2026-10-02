@@ -32,6 +32,30 @@
         (io/copy file copy)))
     copy-root))
 
+(defn- temp-module
+  "A new directory holding the Go module `module-path`: its go.mod and
+  `files`, a map of module-relative path to content."
+  [module-path files]
+  (let [module-root (io/file (System/getProperty "java.io.tmpdir")
+                             (str "uml-go-" (System/nanoTime)))]
+    (doseq [[path content] (assoc files "go.mod" (str "module " module-path "\n\ngo 1.21\n"))]
+      (io/make-parents (io/file module-root path))
+      (spit (io/file module-root path) content))
+    module-root))
+
+(defn- listed-as-cgo-file?
+  "Does `go list`, with cgo switched on, report `file-name` among the CgoFiles
+  of the module at `module-root`?"
+  [module-root file-name]
+  (let [builder (-> (ProcessBuilder. ["go" "list" "-json" "./..."])
+                    (.directory module-root)
+                    (.redirectError java.lang.ProcessBuilder$Redirect/DISCARD))]
+    (.put (.environment builder) "CGO_ENABLED" "1")
+    (boolean (re-find (re-pattern (str "\"CgoFiles\":\\s*\\[[^\\]]*\""
+                                       (java.util.regex.Pattern/quote file-name)
+                                       "\""))
+                      (slurp (.getInputStream (.start builder)))))))
+
 (defn- thrown-by [scan-thunk]
   (try (scan-thunk)
        nil
@@ -232,6 +256,38 @@
                                      (assoc linux-opts :go {:goos "windows"}))]
         (should-be-nil (op-named @linux-scan :store "windowsOnly"))
         (should= true (:private (op-named windows-scan :store "windowsOnly"))))))
+
+  (it "lists the init function of each file as its own op"
+    (with-go
+      (let [module-root (temp-module "example.com/demo"
+                                     {"boot.go" "package demo\n\nfunc init() {}\n"
+                                      "wire.go" (str "package demo\n\nvar wired bool\n\n"
+                                                     "func init() { wired = true }\n")})
+            scan (graph/scan graph-go/impl module-root linux-opts)
+            init-ops (filter #(= "init" (:name %)) (:ops ((classes-by-id scan) :demo)))]
+        (should= ["boot.go" "wire.go"] (map #(.getName (io/file (:file %))) init-ops))
+        (should= [3 5] (map :line init-ops)))))
+
+  (it "lists a cgo file and makes nothing of its pseudo-import C"
+    (with-go
+      (let [module-root (temp-module "example.com/cgodemo"
+                                     {"answer.go" (str "package cgodemo\n\n"
+                                                       "/*\nint answer(void) { return 42; }\n*/\n"
+                                                       "import \"C\"\n\n"
+                                                       "func Answer() int { return int(C.answer()) }\n")})]
+        (if (listed-as-cgo-file? module-root "answer.go")
+          (let [cgodemo-package (-> (with-helper-environment {"CGO_ENABLED" "1"}
+                                      #(graph-go/scan-facts module-root nil))
+                                    :packages
+                                    first)
+                scan (with-helper-environment {"CGO_ENABLED" "1"}
+                       #(graph/scan graph-go/impl module-root {:prefix "example.com.cgodemo"}))]
+            (should= ["answer.go"] (:files cgodemo-package))
+            (should= [] (:imports cgodemo-package))
+            (should= [:cgodemo] (map :id (:classes scan)))
+            (should= ["Answer"] (map :name (:ops (first (:classes scan)))))
+            (should= [] (:edges scan)))
+          (println "go list reports no cgo files here; cgo scan skipped")))))
 
   (it "throws naming the file that does not parse"
     (with-go
