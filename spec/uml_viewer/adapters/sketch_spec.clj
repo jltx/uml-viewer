@@ -754,6 +754,88 @@
         (should= 1 @opened)
         (should= 1 @remembered))))
 
+  (it "starts the snapshot sketch with no companion, update step, or close handler"
+    (let [opts (atom nil)
+          companions (atom 0)
+          hints (atom [])]
+      (with-redefs [q/sketch (fn [& args]
+                               (reset! opts (apply hash-map args))
+                               :snapshot-applet)
+                    q/hint (fn [hint] (swap! hints conj hint))
+                    uml-viewer.adapters.sketch/open-in-terminal! (fn [& _] (swap! companions inc))
+                    uml-viewer.adapters.sketch/remember-companion! (fn [_] (swap! companions inc))]
+        (should= :snapshot-applet (sketch/snapshot! {:focus [:shop]} "out.png"))
+        (should= 0 @companions)
+        (should= "UML viewer" (:title @opts))
+        (should= [sketch/window-width sketch/window-height] (:size @opts))
+        (should-be-nil (:features @opts))
+        (should-be-nil (:update @opts))
+        (should-be-nil (:on-close @opts))
+        (quiet-quil
+          (fn []
+            (should= {:focus [:shop]} ((:setup @opts)))
+            (should= [:disable-async-saveframe] @hints))))))
+
+  (it "saves the snapshot once the frame has settled, then exits 0"
+    (let [opts (atom nil)
+          log (atom [])
+          frame (atom 1)]
+      (with-redefs [q/sketch (fn [& args] (reset! opts (apply hash-map args)))
+                    draw/draw-state (fn [state] (swap! log conj [:draw state]))
+                    q/frame-count (fn [] @frame)
+                    q/save (fn [path] (swap! log conj [:save path]) true)
+                    uml-viewer.adapters.sketch/halt-vm! (fn [] (swap! log conj [:exit 0]))
+                    uml-viewer.adapters.sketch/fail-vm! (fn [] (swap! log conj [:exit 1]))]
+        (sketch/snapshot! :state "out.png")
+        ((:draw @opts) :state)
+        (reset! frame 2)
+        ((:draw @opts) :state)
+        (should= [[:draw :state] [:draw :state]] @log)
+        (reset! frame 3)
+        (should (re-find #"^Saved out\.png\s+$"
+                         (with-out-str ((:draw @opts) :state))))
+        (should= [[:draw :state] [:save "out.png"] [:exit 0]] (drop 2 @log)))))
+
+  (it "exits 1 when the snapshot cannot be drawn or written"
+    (let [opts (atom nil)
+          exits (atom [])
+          failing-draw (fn [draw-state save]
+                         (reset! exits [])
+                         (let [err (java.io.StringWriter.)]
+                           (with-redefs [draw/draw-state draw-state
+                                         q/frame-count (fn [] 3)
+                                         q/save save
+                                         uml-viewer.adapters.sketch/halt-vm! (fn [] (swap! exits conj 0))
+                                         uml-viewer.adapters.sketch/fail-vm! (fn [] (swap! exits conj 1))]
+                             (binding [*err* err]
+                               ((:draw @opts) :state)))
+                           (str err)))]
+      (with-redefs [q/sketch (fn [& args] (reset! opts (apply hash-map args)))]
+        (sketch/snapshot! :state "out.png"))
+      (should (re-find #"snapshot failed: could not write out.png"
+                       (failing-draw (fn [_]) (fn [_] false))))
+      (should= [1] @exits)
+      (should (re-find #"snapshot failed: no font"
+                       (failing-draw (fn [_] (throw (Exception. "no font")))
+                                     (fn [_] true))))
+      (should= [1] @exits)
+      (should (re-find #"snapshot failed: disk"
+                       (failing-draw (fn [_]) (fn [_] (throw (Error. "disk"))))))
+      (should= [1] @exits)))
+
+  (it "exits 1 when the snapshot sketch cannot be set up"
+    (let [opts (atom nil)
+          exits (atom [])
+          err (java.io.StringWriter.)]
+      (with-redefs [q/sketch (fn [& args] (reset! opts (apply hash-map args)))
+                    q/frame-rate (fn [_] (throw (Exception. "no display")))
+                    uml-viewer.adapters.sketch/fail-vm! (fn [] (swap! exits conj 1))]
+        (sketch/snapshot! :state "out.png")
+        (binding [*err* err]
+          ((:setup @opts)))
+        (should (re-find #"snapshot failed: no display" (str err)))
+        (should= [1] @exits))))
+
   (it "wakes the legacy grok session when the per-project session is missing"
     (let [root (str (System/getProperty "java.io.tmpdir")
                     "/uv-wake-" (System/nanoTime))

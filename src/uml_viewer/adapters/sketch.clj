@@ -842,3 +842,51 @@
                     state)
     :on-close #'on-main-close
     :middleware [m/fun-mode])))
+
+(def ^:private snapshot-frame 3)
+
+(defn- fail-vm! []
+  (System/exit 1))
+
+(defn- snapshot-failed! [reason]
+  (binding [*out* *err*]
+    (println "UML viewer: snapshot failed:" reason))
+  (fail-vm!))
+
+(defn- snapshot-step
+  "Run `step`, exiting 1 when it throws. Quil's safe-fns would otherwise
+  swallow the exception and keep the window open."
+  [step]
+  (try
+    (step)
+    (catch Throwable t
+      (snapshot-failed! (or (.getMessage t) (str t))))))
+
+(defn- snapshot-setup [state]
+  (q/frame-rate 30)
+  (q/color-mode :rgb)
+  (q/smooth)
+  (q/text-font (q/create-font "SansSerif" 14 true))
+  ;; Processing saves frames on a background thread by default; the JVM
+  ;; exits right after the save, so the file must be written first.
+  (q/hint :disable-async-saveframe)
+  state)
+
+(defn- snapshot-draw [state out-path]
+  (draw/draw-state state)
+  (when (>= (q/frame-count) snapshot-frame)
+    (if (q/save out-path)
+      (do (println "Saved" out-path)
+          (halt-vm!))
+      (snapshot-failed! (str "could not write " out-path)))))
+
+(defn snapshot!
+  "Draw `state` in the main window, save that window to `out-path` as a
+  PNG, and exit the JVM. No companion, mailbox, or reload is involved."
+  [state out-path]
+  (q/sketch
+    :title "UML viewer"
+    :size [window-width window-height]
+    :setup (fn [] (snapshot-step #(snapshot-setup state)))
+    :draw (fn [state] (snapshot-step #(snapshot-draw state out-path)))
+    :middleware [m/fun-mode]))
