@@ -16,16 +16,25 @@
        "\n"
        "  -h, --help        Print this help and exit.\n"))
 
+(def ^:private value-flags
+  {"--snapshot" :snapshot
+   "--focus" :focus})
+
 (defn parse-args
-  "EDN path and flags. `--restart` skips spawning a new agent."
+  "EDN path and flags. `--restart` skips spawning a new agent.
+  `:snapshot` and `:focus` appear only when their flags are given."
   [args]
-  (let [args (keep identity args)
-        help? (boolean (some #{"--help" "-h"} args))
-        restart? (boolean (some #{"--restart"} args))
-        path (->> args (remove #{"--help" "-h" "--restart"}) first)]
-    {:help? help?
-     :restart? restart?
-     :path (or path "examples/library.edn")}))
+  (loop [args (keep identity args)
+         parsed {:help? false :restart? false :path nil}]
+    (if-let [[arg & more] (seq args)]
+      (cond
+        (#{"--help" "-h"} arg) (recur more (assoc parsed :help? true))
+        (= "--restart" arg) (recur more (assoc parsed :restart? true))
+        (value-flags arg) (recur (rest more)
+                                 (assoc parsed (value-flags arg) (first more)))
+        (:path parsed) (recur more parsed)
+        :else (recur more (assoc parsed :path arg)))
+      (update parsed :path #(or % "examples/library.edn")))))
 
 (defn start!
   "Launch the viewer. `source-impl` satisfies `LanguageSource`."

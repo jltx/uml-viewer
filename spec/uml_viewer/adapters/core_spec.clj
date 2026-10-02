@@ -32,6 +32,19 @@
         (should= :help @ret)
         (should (re-find #"Usage: clj -M:run" out)))))
 
+  (it "takes --snapshot and --focus with their values, in any position"
+    (should= {:path "x.edn" :restart? false :help? false
+              :snapshot "o.png" :focus "a.b"}
+             (core/parse-args ["--snapshot" "o.png" "--focus" "a.b" "x.edn"]))
+    (should= {:path "x.edn" :restart? false :help? false
+              :snapshot "o.png" :focus "a.b"}
+             (core/parse-args ["x.edn" "--focus" "a.b" "--snapshot" "o.png"]))
+    (should= {:path "x.edn" :restart? false :help? false :snapshot "o.png"}
+             (core/parse-args ["--snapshot" "o.png" "x.edn"]))
+    (should= {:path "examples/library.edn" :restart? false :help? false
+              :focus "a.b"}
+             (core/parse-args ["--focus" "a.b"])))
+
   (it "starts the sketch when not asking for help"
     (let [args (atom nil)]
       (with-redefs [sketch/start! (fn [& a] (reset! args a) :started)]
