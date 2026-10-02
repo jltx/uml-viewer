@@ -130,14 +130,15 @@ Rename or move of a function is a new form: overlay does not match old names.
 ### Snapshot to a PNG
 
 ```bash
-clojure -M:run --snapshot target/go-demo.png examples/go-demo.edn
-clojure -M:run --snapshot target/pkg.png --focus pkg examples/go-demo.edn
+mkdir -p target
+clojure -M:run --snapshot target/uml-viewer.png examples/uml-viewer.edn
+clojure -M:run --snapshot target/adapters.png --focus adapters examples/uml-viewer.edn
 ```
 
 `--snapshot FILE` draws the diagram once, saves the window to `FILE`, and
-exits. `FILE` must end in `.png`, and its directory must exist. A view
-larger than the window is zoomed out to fit. No companion starts and no
-mail is acted on.
+exits. `FILE` must end in `.png`, and its directory must exist (the first
+command above creates `target/`). A view larger than the window is zoomed
+out to fit. No companion starts and no mail is acted on.
 
 `--focus ID` is allowed only with `--snapshot`. It opens the box with that
 dotted id before drawing, as if you had double-clicked down to it (`pkg`,
@@ -569,8 +570,10 @@ one class per package. It needs `go` on `PATH`: a small bundled Go program,
 run with `go run` in the module root, reads `go list` and parses each file.
 Set `:lang :go`, `:src` to the module root (the directory with `go.mod`,
 resolved against the directory you run from), and `:prefix` to the module
-path with dots for slashes. A package that imports another package of the
-module is a `:dependency`. Test files (`*_test.go`) are not scanned, so a
+path with dots for slashes. `:src` must be the module root itself: a
+subdirectory of the module is rejected with an error that names the module
+root. A package that imports another package of the module is a
+`:dependency`. Test files (`*_test.go`) are not scanned, so a
 directory that holds only tests makes no class. Build constraints apply, so
 a file for another operating system is not scanned. `:go {:goos "linux"}`
 selects the `GOOS` the scan assumes. It is the only setting you can pass.
@@ -578,10 +581,12 @@ When the policy has no `:goos`, a `GOOS` in the environment does the same.
 A `GOARCH` in the environment applies to the scan too; the policy has no
 key for the architecture. Everything else (`GOFLAGS`,
 `CGO_ENABLED`, build tags, and so on) comes from the environment. A
-`:goos` that differs from the host turns cgo off by default, so cgo files
-are not listed. Top-level functions, methods, and
-types are the members (`:ops`). Constants and variables are not. A member
-whose name starts with a lower-case letter is private.
+target `GOOS` (the `:goos` or the environment's) or a `GOARCH` in the
+environment that differs from the host turns cgo off by default, so cgo
+files are not listed. Go 1.20 or newer is needed. Top-level functions,
+methods, and types are the members (`:ops`). Constants and variables are
+not. A member whose last identifier does not start with an upper-case
+letter is private.
 
 How a package, an import, and a member are named:
 
@@ -608,14 +613,21 @@ clojure -M:ir examples/go-demo.policy.edn
 
 Open the result as described under [Run](#run). On Windows, see
 [Windows](#windows). The demo diagram sits outside the demo module, so it
-shows no metrics.
+shows no metrics. To save it as a PNG, run the step above first, then
+`clojure -M:run --snapshot target/go-demo.png examples/go-demo.edn`
+(see [Snapshot to a PNG](#snapshot-to-a-png)).
 
 Limits:
 
 - A directory name that contains a dot splits into levels, because every
   `.` in a class id is a nesting level.
-- Several `init` functions in one package (each file may have one) share
-  one card row. They get no metrics.
+- A file may hold several `init` functions. Every `init` row of a class
+  opens the first `init`. When metrics are loaded, the `init` functions of
+  a package share one card row and get no metrics; without metrics, each
+  `init` has its own row.
+- Member navigation needs a hierarchical policy (the default). A policy
+  with `:packages` or `:diagrams` drops the members from the generated
+  classes, so a member click opens the first file of the package.
 - The tree view titles a box from the last segment of its id, capitalized:
   `cmd.demo` is titled `Demo`, even though its package is named `main`.
 - Two packages of the module that map to one class id make `clojure -M:ir`
@@ -867,7 +879,7 @@ not special-case languages in the class card.
 its `:line`, as the scanner recorded them. If that line no longer declares
 the member, it searches the file for the declaration. When the search finds
 none, the recorded line stands only if the file still has that line.
-Clicking the class name opens the package's first file.
+The namespace row of the class card opens the package's first file.
 
 Quil stays in `adapters.draw` and `adapters.sketch`. The rest of the engine
 does not depend on Processing.
