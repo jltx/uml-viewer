@@ -92,7 +92,9 @@
 
   (it "describes --snapshot and --focus in the help"
     (should (re-find #"--snapshot" core/help-text))
-    (should (re-find #"--focus" core/help-text)))
+    (should (re-find #"--focus" core/help-text))
+    (should (re-find #"\.png" core/help-text))
+    (should (re-find #"zoomed\s+out\s+to\s+fit" core/help-text)))
 
   (it "says snapshot mode acts on no mail, since the mailbox is still read"
     (should (re-find #"no\s+mail is acted on" core/help-text))
