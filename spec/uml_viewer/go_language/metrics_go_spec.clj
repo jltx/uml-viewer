@@ -145,3 +145,16 @@
                                "Survivors:"
                                "  line 18 >= -> > func/Store.Close"
                                ""])))))
+
+(describe "go mutation forms"
+  (it "ids an exported method as public and an unexported function as private"
+    (should= [{:id "defn/Store.Close" :killed 3 :survived 1 :uncovered 0 :sites 4}
+              {:id "defn-/normalize" :killed 0 :survived 0 :uncovered 2 :sites 2}]
+             (metrics-go/mutation-forms
+               [{:name "Store.Close" :killed 3 :survived 1 :uncovered 0}
+                {:name "normalize" :killed 0 :survived 0 :uncovered 2}])))
+
+  (it "ids an unexported method of an exported type as private"
+    (should= ["defn-/Store.reset"]
+             (map :id (metrics-go/mutation-forms
+                        [{:name "Store.reset" :killed 1 :survived 0 :uncovered 0}])))))

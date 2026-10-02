@@ -93,3 +93,19 @@
                 (merge {:name function-name :killed 0 :survived 0 :uncovered 0} counts)))
          (sort-by :name)
          vec)))
+
+(defn- private-name? [member-name]
+  (let [last-identifier (last (str/split member-name #"\."))]
+    (Character/isLowerCase (char (first last-identifier)))))
+
+(defn mutation-forms
+  "Snapshot forms for per-function site counts. The overlay reads the
+  function name and its visibility from the `defn/` or `defn-/` id."
+  [results]
+  (mapv (fn [{:keys [killed survived uncovered] function-name :name}]
+          {:id (str (if (private-name? function-name) "defn-/" "defn/") function-name)
+           :killed killed
+           :survived survived
+           :uncovered uncovered
+           :sites (+ killed survived uncovered)})
+        results))
