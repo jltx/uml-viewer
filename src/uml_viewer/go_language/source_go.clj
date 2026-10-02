@@ -1,6 +1,7 @@
 (ns uml-viewer.go-language.source-go
   "Go LanguageSource: open the ident's own :file at the member's declaration,
-  which is at the ident's :line or, when that line is stale, found by search."
+  which is at the ident's :line or, when that line is stale, found by search;
+  a declaration the search does not find opens at the ident's :line."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [uml-viewer.source :as source]))
@@ -71,11 +72,15 @@
 
 (defn- member-line
   "The ident's recorded line when it declares the member (two `init` functions
-  share one name), else the first line that does."
+  share one name), else the first line that does. When the search knows no
+  such line, the recorded line stands if the source has it: the scanner read
+  it from the syntax tree, which knows more declaration forms than the search."
   [source ident]
-  (let [declared (declaration-lines source (:name ident))]
-    (or (some #{(:line ident)} declared)
-        (first declared))))
+  (let [declared (declaration-lines source (:name ident))
+        recorded-line (:line ident)]
+    (or (some #{recorded-line} declared)
+        (first declared)
+        (when (line-text source recorded-line) recorded-line))))
 
 (defrecord GoSource []
   source/LanguageSource

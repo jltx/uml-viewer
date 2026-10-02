@@ -68,10 +68,10 @@
                                                :line 9999
                                                :lang :go}))))
 
-  (it "returns nil for a named member the file does not declare"
+  (it "returns nil for an undeclared member whose line is past the end of the file"
     (should-be-nil (source/member-source :go {:name "Missing"
                                               :file query-file
-                                              :line 13
+                                              :line 9999
                                               :lang :go})))
 
   (it "opens the class-level file with no line for a module row"
@@ -230,6 +230,26 @@
     (should-be-nil (searched-line "Missing"))
     (should-be-nil (searched-line "Store.Kind"))
     (should-be-nil (searched-line "entries")))
+
+  (it "keeps the recorded line of a declaration form the search does not know"
+    (let [unusual-forms ["package store"
+                         ""
+                         "var _ = 0; func Late() {}"
+                         ""
+                         "func ("
+                         "\tr Row,"
+                         ") Wide() {}"
+                         ""
+                         "type ( Alias = int )"]]
+      (should= 3 (found-line unusual-forms {:name "Late" :line 3}))
+      (should= 7 (found-line unusual-forms {:name "Row.Wide" :line 7}))
+      (should= 9 (found-line unusual-forms {:name "Alias" :line 9}))
+      (should-be-nil (found-line unusual-forms {:name "Late"}))))
+
+  (it "is nil for an undeclared member whose recorded line is past the end of the source"
+    (should-be-nil (found-line declaration-forms
+                               {:name "Missing" :line (inc (count declaration-forms))}))
+    (should-be-nil (found-line declaration-forms {:name "Missing" :line 0})))
 
   (it "leaves the line of an ident without a name alone"
     (should= 7 (found-line declaration-forms {:ns "example.com.demo.store" :line 7}))
