@@ -177,6 +177,9 @@
           module-root (io/file (or (:src policy) "."))
           go-opts (:go policy)]
       (cond
+        ;; a process cannot start in a missing directory, which would read as a missing sh
+        (not (.isDirectory module-root)) (do (println (str "Go module root not found: " module-root))
+                                             1)
         (not (sh-starts? module-root)) (do (println sh-missing-message)
                                            1)
         (:since opts) (measure-since command module-root go-opts (:since opts))

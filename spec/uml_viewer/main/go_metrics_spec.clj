@@ -175,4 +175,13 @@
   (it "names the commands when the command is unknown"
     (let [{:keys [status output]} (run-captured "coverage" "no-policy.edn" {})]
       (should= 1 status)
-      (should-contain "(crap|mutate) <policy.edn> [--since <git-ref>]" output))))
+      (should-contain "(crap|mutate) <policy.edn> [--since <git-ref>]" output)))
+
+  (it "names the module root when it is not a directory"
+    (let [missing-root (io/file (System/getProperty "java.io.tmpdir")
+                                (str "uml-go-missing-" (System/nanoTime)))
+          policy-file (java.io.File/createTempFile "go-metrics" ".policy.edn")]
+      (spit policy-file (pr-str {:lang :go :src (.getPath missing-root)}))
+      (let [{:keys [status output]} (run-captured "crap" (.getPath policy-file) {})]
+        (should= 1 status)
+        (should-contain (str "Go module root not found: " (.getPath missing-root)) output)))))
