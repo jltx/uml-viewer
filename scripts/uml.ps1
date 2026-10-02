@@ -56,4 +56,4 @@ $process = Start-Process -FilePath 'cmd.exe' `
     -WorkingDirectory (Get-Location).ProviderPath `
     -WindowStyle Hidden `
     -PassThru
-Write-Output "UML viewer started (pid $($process.Id)). Log: $logFile"
+Write-Output "UML viewer started (launcher pid $($process.Id)). Log: $logFile"
