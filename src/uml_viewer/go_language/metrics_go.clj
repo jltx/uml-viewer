@@ -118,3 +118,14 @@
     (:packages facts)
     (let [changed (set changed-files)]
       (filterv #(some changed (:files %)) (:packages facts)))))
+
+(defn merge-crap
+  "The crap snapshot entries after a run: `new-entries` stand in for every
+  earlier entry of `measured-namespaces`; other namespaces keep theirs."
+  [existing-entries new-entries measured-namespaces]
+  (let [measured (set measured-namespaces)]
+    (->> existing-entries
+         (remove #(measured (:namespace %)))
+         (concat new-entries)
+         (sort-by (juxt :namespace :name))
+         vec)))

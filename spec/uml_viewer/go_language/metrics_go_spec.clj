@@ -179,3 +179,32 @@
 
   (it "selects no package when nothing changed"
     (should= [] (metrics-go/select-packages facts []))))
+
+(defn- crap-entry [namespace-name function-name crap]
+  {:namespace namespace-name :name function-name :complexity 1 :coverage 100.0 :crap crap})
+
+(describe "go crap merge"
+  (it "replaces the entries of a measured namespace and keeps the others, sorted"
+    (should= [(crap-entry "example.com.demo" "Version" 1.0)
+              (crap-entry "example.com.demo.store" "Open" 1.0)
+              (crap-entry "example.com.demo.store" "Store.Close" 2.0)]
+             (metrics-go/merge-crap [(crap-entry "example.com.demo.store" "Store.Close" 6.0)
+                                     (crap-entry "example.com.demo.store" "normalize" 1.0)
+                                     (crap-entry "example.com.demo" "Version" 1.0)]
+                                    [(crap-entry "example.com.demo.store" "Store.Close" 2.0)
+                                     (crap-entry "example.com.demo.store" "Open" 1.0)]
+                                    ["example.com.demo.store"])))
+
+  (it "empties a measured namespace that has no new entries"
+    (should= [(crap-entry "example.com.demo" "Version" 1.0)]
+             (metrics-go/merge-crap [(crap-entry "example.com.demo.store" "Store.Close" 6.0)
+                                     (crap-entry "example.com.demo" "Version" 1.0)]
+                                    []
+                                    ["example.com.demo.store"])))
+
+  (it "keeps the entries of a namespace that was not measured"
+    (should= [(crap-entry "example.com.demo" "Version" 1.0)
+              (crap-entry "example.com.demo.store" "Store.Close" 6.0)]
+             (metrics-go/merge-crap [(crap-entry "example.com.demo.store" "Store.Close" 6.0)]
+                                    [(crap-entry "example.com.demo" "Version" 1.0)]
+                                    ["example.com.demo"]))))
