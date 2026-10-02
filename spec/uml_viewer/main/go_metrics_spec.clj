@@ -206,21 +206,25 @@
           (should= first-snapshot-text second-snapshot-text)
           (should= [] (tool-leftovers-in-fixture))))))
 
+  ;; opt-in: each run leaves the timed-out mutant's `go test` alive for ten
+  ;; minutes, and with it a runner output file that cannot be deleted
   (it "returns once mutate4go ends, though a timed-out mutant leaves its test running"
-    (with-tools
-      (let [module-root (temp-copy-of-fixture)
-            policy-path (write-policy module-root)]
-        (add-drain-whose-mutant-never-returns module-root)
-        (let [started (System/nanoTime)
-              {:keys [status]} (run-captured "mutate" policy-path {})
-              elapsed-seconds (/ (- (System/nanoTime) started) 1e9)
-              forms (:forms (edn/read-string
-                              (slurp (io/file module-root
-                                              ".metrics/mutate/example.com/demo/store.edn"))))]
-          (should= 0 status)
-          (should (< elapsed-seconds 180))
-          (should= {:id "defn/Drain" :killed 3 :survived 0 :uncovered 0 :sites 3}
-                   (form-with-id forms "defn/Drain")))))))
+    (if (empty? (System/getenv "UML_VIEWER_SLOW_SPECS"))
+      (println "mutant-timeout stall example skipped; set UML_VIEWER_SLOW_SPECS=1 to run it")
+      (with-tools
+        (let [module-root (temp-copy-of-fixture)
+              policy-path (write-policy module-root)]
+          (add-drain-whose-mutant-never-returns module-root)
+          (let [started (System/nanoTime)
+                {:keys [status]} (run-captured "mutate" policy-path {})
+                elapsed-seconds (/ (- (System/nanoTime) started) 1e9)
+                forms (:forms (edn/read-string
+                                (slurp (io/file module-root
+                                                ".metrics/mutate/example.com/demo/store.edn"))))]
+            (should= 0 status)
+            (should (< elapsed-seconds 180))
+            (should= {:id "defn/Drain" :killed 3 :survived 0 :uncovered 0 :sites 3}
+                     (form-with-id forms "defn/Drain"))))))))
 
 (describe "go metrics since a git ref"
   (it "reads the git ref that follows --since"
