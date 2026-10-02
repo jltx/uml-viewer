@@ -12,18 +12,38 @@
 (defn- helper-source-path []
   (.getPath (io/file (.toURI (io/resource "uml_viewer/go_language/goscan/main.go")))))
 
+(def ^:private ^:dynamic *go-executable* "go")
+
+(defn- helper-process
+  "The command that runs the goscan helper and the environment it runs in,
+  given the `environment` of this process. `go run` must build the helper for
+  the host, so GOOS and GOARCH leave the environment and the target GOOS, from
+  `go-opts` or else from `environment`, goes to the helper as a flag."
+  [go-opts environment]
+  (let [target-goos (or (:goos go-opts) (get environment "GOOS"))]
+    {:command (cond-> [*go-executable* "run" (helper-source-path)]
+                target-goos (conj "-goos" target-goos))
+     :environment (dissoc environment "GOOS" "GOARCH")}))
+
+(defn- start-helper [root go-opts stderr-file]
+  (let [{:keys [command environment]} (helper-process go-opts (into {} (System/getenv)))
+        builder (-> (ProcessBuilder. ^java.util.List command)
+                    (.directory (io/file root))
+                    (.redirectError stderr-file))]
+    (doto (.environment builder) .clear (.putAll environment))
+    (try (.start builder)
+         (catch java.io.IOException cause
+           (throw (ex-info (str "Go toolchain not found on PATH: " (ex-message cause))
+                           {:root (str root) :missing-executable (first command)}
+                           cause))))))
+
 (defn- run-helper
   "Stdout of the goscan helper run in module `root`."
   [root go-opts]
-  (let [command (cond-> ["go" "run" (helper-source-path)]
-                  (:goos go-opts) (conj "-goos" (:goos go-opts)))
-        ;; stderr goes to a file: an undrained stderr pipe blocks the child once it fills
-        stderr-file (java.io.File/createTempFile "goscan" ".stderr")]
+  ;; stderr goes to a file: an undrained stderr pipe blocks the child once it fills
+  (let [stderr-file (java.io.File/createTempFile "goscan" ".stderr")]
     (try
-      (let [process (-> (ProcessBuilder. ^java.util.List command)
-                        (.directory (io/file root))
-                        (.redirectError stderr-file)
-                        .start)
+      (let [process (start-helper root go-opts stderr-file)
             stdout (slurp (.getInputStream process))
             exit-code (.waitFor process)]
         (when-not (zero? exit-code)

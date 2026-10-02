@@ -37,6 +37,20 @@
        nil
        (catch clojure.lang.ExceptionInfo failure failure)))
 
+(def ^:private helper-process @#'graph-go/helper-process)
+
+(defn- with-helper-environment
+  "The result of `scan-thunk` when the helper process is started from an
+  environment that also holds `extra-variables`."
+  [extra-variables scan-thunk]
+  (with-redefs-fn {#'graph-go/helper-process
+                   (fn [go-opts environment]
+                     (helper-process go-opts (merge environment extra-variables)))}
+    scan-thunk))
+
+(def ^:private non-host-goos
+  (if (str/starts-with? (System/getProperty "os.name") "Windows") "linux" "windows"))
+
 (describe "go scan facts"
   (it "reports the module's packages, each with its dotted namespace"
     (with-go
@@ -57,6 +71,30 @@
       (let [facts (graph-go/scan-facts fixture-root nil)]
         (should (seq (:goos facts)))
         (should= 5 (count (:packages facts))))))
+
+  (it "scans for a GOOS set in the environment when no go opts are given"
+    (with-go
+      (let [facts (with-helper-environment {"GOOS" non-host-goos "GOARCH" "arm64"}
+                    #(graph-go/scan-facts fixture-root nil))]
+        (should= non-host-goos (:goos facts))
+        (should-contain (str "store/store_" non-host-goos ".go")
+                        (:files (last (:packages facts)))))))
+
+  (it "builds the helper for the host and names the target GOOS as a flag"
+    (let [environment {"GOOS" "plan9" "GOARCH" "arm64" "GOFLAGS" "-mod=mod"}
+          goos-flag #(take-last 2 (:command (helper-process % environment)))]
+      (should= {"GOFLAGS" "-mod=mod"} (:environment (helper-process nil environment)))
+      (should= ["-goos" "plan9"] (goos-flag nil))
+      (should= ["-goos" "linux"] (goos-flag {:goos "linux"}))
+      (should-not-contain "-goos" (:command (helper-process nil {"GOFLAGS" "-mod=mod"})))))
+
+  (it "throws naming the Go toolchain when the go program cannot be started"
+    (let [failure (with-bindings {#'graph-go/*go-executable* "no-such-go-program"}
+                    (thrown-by #(graph-go/scan-facts fixture-root nil)))]
+      (should-not-be-nil failure)
+      (should-contain "Go toolchain not found on PATH" (ex-message failure))
+      (should-contain "no-such-go-program" (ex-message failure))
+      (should (instance? java.io.IOException (ex-cause failure)))))
 
   (it "throws with the helper's stderr when the helper fails"
     (with-go
