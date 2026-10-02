@@ -135,6 +135,31 @@
 (defn- form-with-id [forms id]
   (first (filter #(= id (:id %)) forms)))
 
+(defn- add-drain-whose-mutant-never-returns
+  "Adds a tested function to the store package. The mutant `<=` of its loop
+  bound waits for a value that never comes, so mutate4go times it out; the
+  orphaned test stays blocked until `go test` gives up after ten minutes."
+  [module-root]
+  (spit (io/file module-root "store" "drain.go")
+        (str "package store\n\n"
+             "func Drain(pending chan int, count int) int {\n"
+             "\ttotal := 0\n"
+             "\tfor received := 0; received < count; received++ {\n"
+             "\t\ttotal += <-pending\n"
+             "\t}\n"
+             "\treturn total\n"
+             "}\n"))
+  (spit (io/file module-root "store" "store_test.go")
+        (str "\nfunc TestDrain(t *testing.T) {\n"
+             "\tpending := make(chan int, 2)\n"
+             "\tpending <- 4\n"
+             "\tpending <- 5\n"
+             "\tif Drain(pending, 2) != 9 {\n"
+             "\t\tt.Fatal(\"drain did not add the pending values\")\n"
+             "\t}\n"
+             "}\n")
+        :append true))
+
 (describe "go mutation snapshot"
   (it "writes the same per-function site counts of a package on each run"
     (with-tools
@@ -154,7 +179,23 @@
           (should= {:id "defn/Store.String" :killed 1 :survived 0 :uncovered 0 :sites 1}
                    (form-with-id forms "defn/Store.String"))
           (should= first-snapshot second-snapshot)
-          (should= [] (tool-leftovers-in-fixture)))))))
+          (should= [] (tool-leftovers-in-fixture))))))
+
+  (it "returns once mutate4go ends, though a timed-out mutant leaves its test running"
+    (with-tools
+      (let [module-root (temp-copy-of-fixture)
+            policy-path (write-policy module-root)]
+        (add-drain-whose-mutant-never-returns module-root)
+        (let [started (System/nanoTime)
+              {:keys [status]} (run-captured "mutate" policy-path {})
+              elapsed-seconds (/ (- (System/nanoTime) started) 1e9)
+              forms (:forms (edn/read-string
+                              (slurp (io/file module-root
+                                              ".metrics/mutate/example.com/demo/store.edn"))))]
+          (should= 0 status)
+          (should (< elapsed-seconds 180))
+          (should= {:id "defn/Drain" :killed 3 :survived 0 :uncovered 0 :sites 3}
+                   (form-with-id forms "defn/Drain")))))))
 
 (describe "go metrics since a git ref"
   (it "reads the git ref that follows --since"

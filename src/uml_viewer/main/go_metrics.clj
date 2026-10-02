@@ -13,16 +13,22 @@
   {:sh "sh" :crap4go "crap4go" :mutate4go "mutate4go"})
 
 (defn- run-process
-  "Exit status and output of `command` run in `directory`. Stderr is merged
-  into stdout so that one drained stream cannot leave the child blocked on
-  the other."
+  "Exit status and combined stdout and stderr of `command` run in `directory`.
+  The output goes to a file and stdin is closed at once: a pipe stays open
+  for as long as any descendant of the child holds it, and mutate4go leaves
+  the `go test` of a timed-out mutant running, so reading a pipe to its end
+  would wait for that orphan."
   [directory command]
-  (let [process (-> (ProcessBuilder. ^java.util.List command)
-                    (.directory directory)
-                    (.redirectErrorStream true)
-                    .start)
-        output (slurp (.getInputStream process))]
-    {:exit (.waitFor process) :output output}))
+  (let [output-file (java.io.File/createTempFile "go-metrics" ".out")]
+    (try
+      (let [process (-> (ProcessBuilder. ^java.util.List command)
+                        (.directory directory)
+                        (.redirectErrorStream true)
+                        (.redirectOutput output-file)
+                        .start)]
+        (.close (.getOutputStream process))
+        {:exit (.waitFor process) :output (slurp output-file)})
+      (finally (.delete output-file)))))
 
 (defn- sh-starts? [module-root]
   (try (run-process module-root [(:sh *executables*) "-c" "exit 0"])
