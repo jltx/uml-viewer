@@ -93,7 +93,7 @@
 
 (defn- private-name? [member-name]
   (let [last-identifier (last (str/split member-name #"\."))]
-    (Character/isLowerCase (char (first last-identifier)))))
+    (not (Character/isUpperCase (char (first last-identifier))))))
 
 (defn mutation-forms
   "Snapshot forms for per-function site counts. The overlay reads the

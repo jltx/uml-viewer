@@ -160,7 +160,12 @@
   (it "ids an unexported method of an exported type as private"
     (should= ["defn-/Store.reset"]
              (map :id (metrics-go/mutation-forms
-                        [{:name "Store.reset" :killed 1 :survived 0 :uncovered 0}])))))
+                        [{:name "Store.reset" :killed 1 :survived 0 :uncovered 0}]))))
+
+  (it "ids a name that starts with an underscore as private"
+    (should= ["defn-/_helper"]
+             (map :id (metrics-go/mutation-forms
+                        [{:name "_helper" :killed 1 :survived 0 :uncovered 0}])))))
 
 (def ^:private root-package
   {:import-path "example.com/demo"
