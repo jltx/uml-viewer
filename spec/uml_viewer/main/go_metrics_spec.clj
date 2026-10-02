@@ -276,6 +276,13 @@ func {
       (should= 1 status)
       (should-contain usage-line output)))
 
+  (it "names a policy file that does not exist and returns 1"
+    (let [missing-policy (.getPath (io/file (System/getProperty "java.io.tmpdir")
+                                            (str "uml-go-missing-" (System/nanoTime) ".policy.edn")))
+          {:keys [status output]} (run-captured "crap" missing-policy {})]
+      (should= 1 status)
+      (should= (str "policy file not found: " missing-policy (System/lineSeparator)) output)))
+
   (it "names the module root when it is not a directory"
     (let [missing-root (io/file (System/getProperty "java.io.tmpdir")
                                 (str "uml-go-missing-" (System/nanoTime)))

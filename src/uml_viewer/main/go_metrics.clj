@@ -185,9 +185,12 @@
   snapshot files. `command` is \"crap\" or \"mutate\"; `opts` may hold
   `:since`, a git ref. Returns the exit status."
   [command policy-path opts]
-  (if-not (and (#{"crap" "mutate"} command) policy-path)
-    (do (println usage)
-        1)
+  (cond
+    (not (and (#{"crap" "mutate"} command) policy-path)) (do (println usage)
+                                                             1)
+    (not (.isFile (io/file policy-path))) (do (println (str "policy file not found: " policy-path))
+                                              1)
+    :else
     (let [policy (ir-generator/read-policy policy-path)
           module-root (io/file (or (:src policy) "."))
           go-opts (:go policy)]
