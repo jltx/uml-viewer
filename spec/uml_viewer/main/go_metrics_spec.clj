@@ -117,6 +117,7 @@
         (let [{:keys [status output]} (run-captured "crap" policy-path {})
               entries (:entries (edn/read-string (slurp (crap-snapshot-file module-root))))]
           (should= 1 status)
+          (should-contain "--- FAIL: TestAlwaysFails" output)
           (should-contain "not measured: example.com/demo/store" (str/split-lines output))
           (should= [earlier-store-entry]
                    (filter #(= "example.com.demo.store" (:namespace %)) entries))

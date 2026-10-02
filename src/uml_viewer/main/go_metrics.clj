@@ -37,11 +37,14 @@
 
 (defn- run-tool
   "Output of one tool invocation in the module root, or nil when the tool
-  exits non-zero. Prints the progress line of the invocation."
+  exits non-zero. Prints the progress line of the invocation, after the
+  tool's own output when it failed."
   [module-root label command]
   (let [started (System/nanoTime)
         {:keys [exit output]} (run-process module-root command)
         seconds (/ (- (System/nanoTime) started) 1e9)]
+    (when-not (zero? exit)
+      (println (str/trim-newline output)))
     (println (format "%s %.1fs%s" label seconds (if (zero? exit) "" " failed")))
     (when (zero? exit) output)))
 
