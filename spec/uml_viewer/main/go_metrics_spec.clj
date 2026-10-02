@@ -49,12 +49,21 @@
                                :go {:goos "linux"}}))
     (.getPath policy-file)))
 
-(defn- run-captured
-  "Status and printed output of one runner call."
-  [command policy-path opts]
+(defn- status-and-output
+  "Status that `runner-call` returns and what it prints."
+  [runner-call]
   (let [status (atom nil)
-        output (with-out-str (reset! status (go-metrics/run! command policy-path opts)))]
+        output (with-out-str (reset! status (runner-call)))]
     {:status @status :output output}))
+
+(defn- run-captured [command policy-path opts]
+  (status-and-output #(go-metrics/run! command policy-path opts)))
+
+(defn- command-line-captured [& arguments]
+  (status-and-output #(#'go-metrics/status-of-arguments arguments)))
+
+(def ^:private usage-line
+  "usage: clojure -M:go-metrics (crap|mutate) <policy.edn> [--since <git-ref>]")
 
 (describe "go metrics preflight"
   (it "stops before any tool runs when sh cannot be started"
@@ -203,6 +212,14 @@
     (should= {:since "main"} (#'go-metrics/parse-options ["--since" "main"]))
     (should= {} (#'go-metrics/parse-options [])))
 
+  (it "prints the usage line and measures nothing when --since has no git ref"
+    (should= {:status 1 :output (str usage-line (System/lineSeparator))}
+             (command-line-captured "crap" "no-policy.edn" "--since")))
+
+  (it "prints the usage line and measures nothing for a flag it does not know"
+    (should= {:status 1 :output (str usage-line (System/lineSeparator))}
+             (command-line-captured "crap" "no-policy.edn" "--verbose")))
+
   (it "keeps the changed Go source files and leaves out tests and other files"
     (should= ["store/query.go" "demo.go"]
              (#'go-metrics/changed-go-sources
@@ -225,7 +242,7 @@
   (it "names the commands when the command is unknown"
     (let [{:keys [status output]} (run-captured "coverage" "no-policy.edn" {})]
       (should= 1 status)
-      (should-contain "(crap|mutate) <policy.edn> [--since <git-ref>]" output)))
+      (should-contain usage-line output)))
 
   (it "names the module root when it is not a directory"
     (let [missing-root (io/file (System/getProperty "java.io.tmpdir")

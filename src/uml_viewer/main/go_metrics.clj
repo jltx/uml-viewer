@@ -194,13 +194,24 @@
         (:since opts) (measure-since command module-root go-opts (:since opts))
         :else (measure command module-root go-opts nil)))))
 
-(defn- parse-options [args]
-  (let [[flag git-ref] args]
-    (if (= "--since" flag)
-      {:since git-ref}
-      {})))
+(defn- parse-options
+  "The options that the arguments after the policy path give, or nil when
+  they are anything but nothing or `--since <git-ref>`."
+  [option-arguments]
+  (cond
+    (empty? option-arguments) {}
+    (and (= 2 (count option-arguments))
+         (= "--since" (first option-arguments))) {:since (second option-arguments)}))
 
-(defn -main [& [command policy-path & args]]
-  (let [status (run! command policy-path (parse-options args))]
+(defn- status-of-arguments
+  "Exit status of a run with the command line `arguments`."
+  [[command policy-path & option-arguments]]
+  (if-let [opts (parse-options option-arguments)]
+    (run! command policy-path opts)
+    (do (println usage)
+        1)))
+
+(defn -main [& arguments]
+  (let [status (status-of-arguments arguments)]
     (flush)
     (System/exit status)))
