@@ -136,6 +136,25 @@
           (should-not-be-nil failure)
           (should-contain "store/query.go" (ex-message failure)))))))
 
+(describe "temp copy of a module"
+  (it "leaves out the .metrics and target directories that tool runs leave behind"
+    (let [source-root (temp-module "example.com/demo"
+                                   {"demo.go" "package demo
+"
+                                    "store/store.go" "package store
+"
+                                    ".metrics/crap.edn" "{}"
+                                    ".metrics/mutate/store.edn" "{}"
+                                    "target/leftover.txt" "x"
+                                    "store/target/leftover.txt" "x"})
+          copy-root (support/temp-copy-of source-root)
+          copied-files (->> (file-seq copy-root)
+                            (filter #(.isFile %))
+                            (map #(str (.relativize (.toPath copy-root) (.toPath %))))
+                            (map #(str/replace % "\\" "/"))
+                            sort)]
+      (should= ["demo.go" "go.mod" "store/store.go"] copied-files))))
+
 (def ^:private linux-opts {:prefix "example.com.demo" :go {:goos "linux"}})
 
 (def ^:private linux-scan

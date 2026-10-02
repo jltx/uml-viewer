@@ -19,13 +19,29 @@
      (do ~@body)
      (println ~skip-message)))
 
-(defn temp-copy-of-fixture []
-  (let [fixture (io/file fixture-root)
-        copy-root (io/file (System/getProperty "java.io.tmpdir")
+(def ^:private tool-output-directories #{".metrics" "target"})
+
+(defn- module-files
+  "The files under `module-root`, without the output directories of crap4go and
+  mutate4go: a tool run inside a module leaves them behind, git-ignored."
+  [module-root]
+  (->> (tree-seq #(and (.isDirectory %)
+                       (or (= module-root %)
+                           (not (tool-output-directories (.getName %)))))
+                 #(.listFiles %)
+                 module-root)
+       (filter #(.isFile %))))
+
+(defn temp-copy-of
+  "A copy of the module at `module-root` in a new temp directory."
+  [module-root]
+  (let [copy-root (io/file (System/getProperty "java.io.tmpdir")
                            (str "uml-go-" (System/nanoTime)))]
-    (doseq [file (file-seq fixture)
-            :when (.isFile file)]
-      (let [copy (io/file copy-root (str (.relativize (.toPath fixture) (.toPath file))))]
+    (doseq [file (module-files module-root)]
+      (let [copy (io/file copy-root (str (.relativize (.toPath module-root) (.toPath file))))]
         (io/make-parents copy)
         (io/copy file copy)))
     copy-root))
+
+(defn temp-copy-of-fixture []
+  (temp-copy-of (io/file fixture-root)))
