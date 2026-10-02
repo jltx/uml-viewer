@@ -26,3 +26,29 @@
        (drop-while #(not= crap-header-columns (columns %)))
        (keep crap-row)
        vec))
+
+(defn- function-names
+  "Names of the functions and methods a scanned package declares."
+  [package]
+  (into #{}
+        (comp (filter #(#{:func :method} (:kind %)))
+              (map :name))
+        (:decls package)))
+
+(defn crap-entries
+  "Snapshot entries for one scanned package. A name measured more than once
+  is left out: the rows cannot be told apart."
+  [rows package]
+  (let [declared (function-names package)
+        package-rows (filter #(and (= (:name package) (:package %))
+                                   (declared (:name %)))
+                             rows)
+        row-count (frequencies (map :name package-rows))]
+    (->> package-rows
+         (filter #(= 1 (row-count (:name %))))
+         (mapv (fn [row]
+                 {:namespace (:ns package)
+                  :name (:name row)
+                  :complexity (:complexity row)
+                  :coverage (:coverage row)
+                  :crap (:crap row)})))))
