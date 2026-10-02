@@ -289,6 +289,18 @@
             (should= [] (:edges scan)))
           (println "go list reports no cgo files here; cgo scan skipped")))))
 
+  (it "throws naming the id and both packages when two packages share a class id"
+    (with-go
+      (let [module-root (temp-module "example.com/demo"
+                                     {"demo.go" "package demo\n\nfunc Outer() {}\n"
+                                      "demo/demo.go" "package demo\n\nfunc Inner() {}\n"})
+            failure (thrown-by #(graph/scan graph-go/impl module-root linux-opts))]
+        (should-not-be-nil failure)
+        (should-contain "example.com/demo and example.com/demo/demo" (ex-message failure))
+        (should-contain ":demo" (ex-message failure))
+        (should= {:id :demo :import-paths ["example.com/demo" "example.com/demo/demo"]}
+                 (ex-data failure)))))
+
   (it "throws naming the file that does not parse"
     (with-go
       (let [broken-root (temp-copy-of-fixture)]

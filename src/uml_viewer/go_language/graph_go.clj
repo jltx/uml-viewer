@@ -66,6 +66,17 @@
     (keyword (last (str/split module #"/")))
     (graph/id-of (:ns package) prefix)))
 
+(defn- reject-shared-ids
+  "Throws when two packages have one class id: the diagram would show a
+  single node for both."
+  [packages]
+  (doseq [[id sharing-packages] (sort-by key (group-by :id packages))
+          :when (next sharing-packages)]
+    (let [import-paths (mapv :import-path sharing-packages)]
+      (throw (ex-info (str "Go packages " (str/join " and " import-paths)
+                           " both map to class id " id)
+                      {:id id :import-paths import-paths})))))
+
 (defn- foreign-id [import-path]
   (let [first-segment (first (str/split import-path #"/"))]
     (keyword (if (str/includes? first-segment ".")
@@ -102,6 +113,7 @@
     (let [facts (scan-facts root (:go opts))
           packages (mapv #(assoc % :id (package-id % (:prefix opts) (:module facts)))
                          (:packages facts))
+          _ (reject-shared-ids packages)
           module-package-ids (into {} (map (juxt :import-path :id)) packages)
           foreign-imports (->> packages
                                (mapcat :imports)
