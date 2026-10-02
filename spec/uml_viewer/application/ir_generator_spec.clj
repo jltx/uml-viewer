@@ -152,7 +152,7 @@
                                (.getPath policy-f)
                                (.getPath out-f)))
       (should= "" (str out))
-      (should= "Unassigned namespaces: demo.b, demo.c\n" (str err))))
+      (should= "Unassigned namespaces: demo.b, demo.c\n" (str/replace (str err) "\r\n" "\n"))))
 
   (it "does not warn when every namespace is assigned"
     (let [out-f (java.io.File/createTempFile "uml-out" ".edn")
