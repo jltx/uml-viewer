@@ -216,22 +216,40 @@
   {:id id :killed killed :survived survived :uncovered 0 :sites (+ killed survived)})
 
 (describe "go mutation form merge"
-  (it "replaces a form that ran again and keeps the forms of other functions, sorted"
+  (it "replaces the forms of a measured file and keeps the others, sorted"
     (should= [(mutation-form "defn-/normalize" 2 0)
-              (mutation-form "defn/Store.Close" 3 0)
-              (mutation-form "defn/Store.String" 1 0)]
+              (mutation-form "defn/Store.Close" 1 2)
+              (mutation-form "defn/Store.String" 3 0)]
              (metrics-go/merge-forms [(mutation-form "defn/Store.String" 1 0)
                                       (mutation-form "defn/Store.Close" 1 2)]
-                                     [(mutation-form "defn/Store.Close" 3 0)
+                                     [(mutation-form "defn/Store.String" 3 0)
                                       (mutation-form "defn-/normalize" 2 0)]
-                                     store-package)))
+                                     store-package
+                                     ["store/query.go"])))
 
   (it "drops a stale form whose function the package no longer declares"
     (should= [(mutation-form "defn/Store.Close" 1 2)]
              (metrics-go/merge-forms [(mutation-form "defn/Deleted" 4 0)
                                       (mutation-form "defn/Store.Close" 1 2)]
                                      []
-                                     store-package))))
+                                     store-package
+                                     [])))
+
+  (it "removes the form of a function in a measured file that has no site in this run"
+    (should= [(mutation-form "defn/Store.String" 1 0)]
+             (metrics-go/merge-forms [(mutation-form "defn/Store.String" 1 0)
+                                      (mutation-form "defn/Store.Close" 1 2)]
+                                     []
+                                     store-package
+                                     ["store/open.go"])))
+
+  (it "keeps the form of a function in a file that was not measured"
+    (should= [(mutation-form "defn/Store.Close" 1 2)
+              (mutation-form "defn/Store.String" 3 0)]
+             (metrics-go/merge-forms [(mutation-form "defn/Store.Close" 1 2)]
+                                     [(mutation-form "defn/Store.String" 3 0)]
+                                     store-package
+                                     ["store/query.go"]))))
 
 (def ^:private fixture-root "spec/fixtures/go/demo")
 
@@ -286,7 +304,8 @@
                     []
                     (metrics-go/mutation-forms
                       (metrics-go/parse-mutation-report string-methods-mutation-report))
-                    scanned-package)
+                    scanned-package
+                    (:files scanned-package))
             package-namespace (:ns scanned-package)
             metrics {:crap (group-by :namespace crap-entries)
                      :mutate {package-namespace {:namespace package-namespace :forms forms}}}

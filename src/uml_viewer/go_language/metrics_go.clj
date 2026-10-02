@@ -27,19 +27,16 @@
        (keep crap-row)
        vec))
 
-(defn- function-names
-  "Names of the functions and methods a scanned package declares."
+(defn- function-decls
+  "The function and method declarations of a scanned package."
   [package]
-  (into #{}
-        (comp (filter #(#{:func :method} (:kind %)))
-              (map :name))
-        (:decls package)))
+  (filter #(#{:func :method} (:kind %)) (:decls package)))
 
 (defn crap-entries
   "Snapshot entries for one scanned package. A name measured more than once
   is left out: the rows cannot be told apart."
   [rows package]
-  (let [declared (function-names package)
+  (let [declared (set (map :name (function-decls package)))
         package-rows (filter #(and (= (:name package) (:package %))
                                    (declared (:name %)))
                              rows)
@@ -134,13 +131,18 @@
   (str/replace (:id form) #"^defn-?/" ""))
 
 (defn merge-forms
-  "The mutation snapshot forms of `package` after a run: a new form stands in
-  for the earlier form with its id, and forms of functions the package no
-  longer declares are left out."
-  [existing-forms new-forms package]
-  (let [declared (function-names package)
-        form-by-id (into {} (map (juxt :id identity)) (concat existing-forms new-forms))]
-    (->> (vals form-by-id)
-         (filter #(declared (form-function-name %)))
+  "The mutation snapshot forms of `package` after a run of `measured-files`:
+  `new-forms` stand in for every earlier form of a function declared in a
+  measured file, forms of functions in other files stay, and forms of
+  functions the package no longer declares are left out."
+  [existing-forms new-forms package measured-files]
+  (let [measured (set measured-files)
+        file-of-function (into {} (map (juxt :name :file)) (function-decls package))
+        in-unmeasured-file? (fn [form]
+                              (let [file (file-of-function (form-function-name form))]
+                                (and file (not (measured file)))))]
+    (->> existing-forms
+         (filter in-unmeasured-file?)
+         (concat new-forms)
          (sort-by :id)
          vec)))
