@@ -34,9 +34,9 @@
       (should= :go (:lang found))
       (should (str/starts-with? (:body found) "package store"))))
 
-  (it "accepts backslash separators in the ident's file"
+  (it "accepts the host's path separators in the ident's file"
     (let [found (source/member-source :go {:name "Query"
-                                           :file (str/replace query-file "/" "\\")
+                                           :file (str/replace query-file "/" (str java.io.File/separatorChar))
                                            :line 13
                                            :lang :go})]
       (should (str/ends-with? (:file found) "store/query.go"))))
