@@ -1,7 +1,10 @@
 (ns uml-viewer.go-language.metrics-go-spec
   (:require [clojure.string :as str]
             [speclj.core :refer :all]
-            [uml-viewer.go-language.metrics-go :as metrics-go]))
+            [uml-viewer.application.overlay :as overlay]
+            [uml-viewer.go-language.graph-go :as graph-go]
+            [uml-viewer.go-language.metrics-go :as metrics-go]
+            [uml-viewer.graph :as graph]))
 
 (def ^:private crap-report
   (str/join
@@ -229,3 +232,83 @@
                                       (mutation-form "defn/Store.Close" 1 2)]
                                      []
                                      store-package))))
+
+(def ^:private fixture-root "spec/fixtures/go/demo")
+
+(def ^:private go-installed?
+  (delay (try (zero? (-> (ProcessBuilder. ["go" "version"])
+                         (.redirectOutput java.lang.ProcessBuilder$Redirect/DISCARD)
+                         (.redirectError java.lang.ProcessBuilder$Redirect/DISCARD)
+                         .start
+                         .waitFor))
+              (catch java.io.IOException _ false))))
+
+(defmacro ^:private with-go [& body]
+  `(if @go-installed?
+     (do ~@body)
+     (println "go not found; Go metrics overlay skipped")))
+
+(def ^:private string-methods-crap-report
+  (str/join
+    "\n"
+    ["CRAP Report"
+     "==========="
+     "Function                       Package                               CC    Cov%     CRAP"
+     "----------------------------------------------------------------------------------------"
+     "Store.String                   store                                  3   50.0%      4.1"
+     "Row.String                     store                                  1  100.0%      1.0"
+     ""]))
+
+(def ^:private string-methods-mutation-report
+  (str/join
+    "\n"
+    ["Uncovered mutations:"
+     "  line 26 false -> true func/Row.String"
+     "[1/2] killed line 18 + -> -: func/Store.String"
+     "[2/2] survived line 18 0 -> 1: func/Store.String"
+     ""]))
+
+(defn- named [function-name items]
+  (first (filter #(= function-name (:name %)) items)))
+
+(describe "go metrics on the overlay"
+  (it "paints each method of the scanned store class with its own numbers"
+    (with-go
+      (let [go-opts {:goos "linux"}
+            scanned-package (named "store" (:packages (graph-go/scan-facts fixture-root go-opts)))
+            scan (graph/scan graph-go/impl fixture-root
+                             {:prefix "example.com.demo" :go go-opts})
+            scanned-class (first (filter #(= :store (:id %)) (:classes scan)))
+            crap-entries (metrics-go/crap-entries
+                           (metrics-go/parse-crap-report string-methods-crap-report)
+                           scanned-package)
+            forms (metrics-go/merge-forms
+                    []
+                    (metrics-go/mutation-forms
+                      (metrics-go/parse-mutation-report string-methods-mutation-report))
+                    scanned-package)
+            package-namespace (:ns scanned-package)
+            metrics {:crap (group-by :namespace crap-entries)
+                     :mutate {package-namespace {:namespace package-namespace :forms forms}}}
+            painted-class (first (:classes (overlay/apply-metrics
+                                             {:hierarchical true
+                                              :prefix "example.com.demo"
+                                              :classes [scanned-class]}
+                                             metrics)))
+            store-string (named "Store.String" (:ops painted-class))
+            row-string (named "Row.String" (:ops painted-class))]
+        (should= {:cc 3 :crap 4.1 :coverage 0.5}
+                 (select-keys store-string [:cc :crap :coverage]))
+        (should= {:cc 1 :crap 1.0 :coverage 1.0}
+                 (select-keys row-string [:cc :crap :coverage]))
+        (should= {:killed 1 :survived 1 :uncovered 0 :sites 2}
+                 (select-keys store-string [:killed :survived :uncovered :sites]))
+        (should= {:killed 0 :survived 0 :uncovered 1 :sites 1}
+                 (select-keys row-string [:killed :survived :uncovered :sites]))
+        (should= (select-keys (named "Store.String" (:ops scanned-class)) [:file :line])
+                 (select-keys store-string [:file :line]))
+        (should= (select-keys (named "Row.String" (:ops scanned-class)) [:file :line])
+                 (select-keys row-string [:file :line]))
+        (should= "spec/fixtures/go/demo/store/query.go" (:file row-string))
+        (should (pos? (:line row-string)))
+        (should= (map :name (:ops scanned-class)) (map :name (:ops painted-class)))))))
