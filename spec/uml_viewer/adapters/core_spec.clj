@@ -163,6 +163,19 @@
       (should (re-find #"snapshot directory not found" (:err ran)))
       (should-not (.exists missing-dir))))
 
+  (it "exits 1 when the snapshot name does not end in .png"
+    (doseq [args [["--snapshot" "out" "demo.edn"]
+                  ["--snapshot" "out.jpg" "demo.edn"]
+                  ["--snapshot" "--restart" "demo.edn"]
+                  ["--snapshot" "demo.edn"]]]
+      (let [ran (apply run-start (tree-state) args)]
+        (should= [1] (:exits ran))
+        (should= [] (:snapshot ran))
+        (should= [] (:live ran))
+        (should (re-find (re-pattern (str "snapshot file must end in \\.png: " (second args)))
+                         (:err ran)))))
+    (should= [] (:exits (run-start (tree-state) "--snapshot" "UPPER.PNG" "demo.edn"))))
+
   (it "prints usage and exits 1 for --focus without --snapshot"
     (let [ran (run-start (tree-state) "--focus" "shop" "demo.edn")]
       (should= [1] (:exits ran))
