@@ -110,5 +110,6 @@
                                           'uml-viewer.rust-language.source-rust
                                           'uml-viewer.rust-language.graph-rust
                                           'uml-viewer.python-language.source-python
-                                          'uml-viewer.python-language.graph-python}
+                                          'uml-viewer.python-language.graph-python
+                                          'uml-viewer.go-language.graph-go}
                                         %)))))

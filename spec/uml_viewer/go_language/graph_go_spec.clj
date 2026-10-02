@@ -2,6 +2,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [speclj.core :refer :all]
+            [uml-viewer.application.ir-generator :as ir-generator]
             [uml-viewer.go-language.graph-go :as graph-go]
             [uml-viewer.graph :as graph]))
 
@@ -201,3 +202,24 @@
         (let [failure (thrown-by #(graph/scan graph-go/impl broken-root linux-opts))]
           (should-not-be-nil failure)
           (should-contain "store/query.go" (ex-message failure)))))))
+
+(describe "go policy"
+  (it "documents a module as a namespace tree with the standard library collapsed"
+    (with-go
+      (let [doc (ir-generator/document graph-go/impl
+                                       {:lang :go
+                                        :src fixture-root
+                                        :prefix "example.com.demo"
+                                        :go {:goos "linux"}
+                                        :foreign ['std]})
+            project-classes (remove :foreign (:classes doc))
+            ops (mapcat :ops project-classes)]
+        (should (:hierarchical doc))
+        (should= [:std] (map :id (filter :foreign (:classes doc))))
+        (should= #{:demo :store :internal.util :pkg.util :cmd.demo}
+                 (set (map :id project-classes)))
+        (should (every? #(seq (:ops %)) project-classes))
+        (should (every? #(str/ends-with? (:file %) ".go") ops))
+        (should (every? #(pos? (:line %)) ops))
+        (should-contain "spec/fixtures/go/demo/store/store_linux.go" (map :file ops))
+        (should-not-contain "windowsOnly" (map :name ops))))))
