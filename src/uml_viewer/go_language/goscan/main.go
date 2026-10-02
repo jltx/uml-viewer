@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -101,6 +102,11 @@ func scanModule(moduleDir, goos, goarch string) (moduleReport, error) {
 	for _, pkg := range listed {
 		if pkg.Module == nil {
 			return moduleReport{}, fmt.Errorf("%s: package is not in a module", pkg.ImportPath)
+		}
+		if report.Module == "" {
+			if err := requireModuleRoot(moduleDir, pkg.Module.Dir); err != nil {
+				return moduleReport{}, err
+			}
 		}
 		report.Module = pkg.Module.Path
 		sourceFiles := append(append([]string{}, pkg.GoFiles...), pkg.CgoFiles...)
@@ -188,6 +194,43 @@ func listPackages(moduleDir, goos, goarch string) ([]listedPackage, error) {
 		}
 		packages = append(packages, pkg)
 	}
+}
+
+// requireModuleRoot rejects a working directory below the module root: every
+// reported path is relative to the root, so the caller would join them to the
+// wrong directory.
+func requireModuleRoot(workingDir, moduleRoot string) error {
+	resolvedWorkingDir, err := canonicalDir(workingDir)
+	if err != nil {
+		return err
+	}
+	resolvedModuleRoot, err := canonicalDir(moduleRoot)
+	if err != nil {
+		return err
+	}
+	if !samePath(resolvedWorkingDir, resolvedModuleRoot) {
+		return fmt.Errorf("%s is not the module root; run goscan in %s", resolvedWorkingDir, resolvedModuleRoot)
+	}
+	return nil
+}
+
+func canonicalDir(dir string) (string, error) {
+	absolute, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(resolved), nil
+}
+
+func samePath(left, right string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
 }
 
 func moduleRelativeSlashPath(moduleDir, packageDir string) (string, error) {

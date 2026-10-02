@@ -120,6 +120,14 @@
       (should-contain (str missing-root) (ex-message failure))
       (should-not-contain "toolchain" (ex-message failure))))
 
+  (it "throws naming the module root when the root is a subdirectory of the module"
+    (with-go
+      (let [failure (thrown-by #(graph-go/scan-facts (io/file fixture-root "store") {:goos "linux"}))
+            module-root (.getCanonicalPath (io/file fixture-root))]
+        (should-not-be-nil failure)
+        (should-contain "is not the module root" (ex-message failure))
+        (should-contain (str/lower-case module-root) (str/lower-case (ex-message failure))))))
+
   (it "throws with the helper's stderr when the helper fails"
     (with-go
       (let [broken-root (temp-copy-of-fixture)]

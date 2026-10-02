@@ -327,6 +327,32 @@ func TestDirectoryWithoutGoModFails(t *testing.T) {
 	}
 }
 
+func TestScanInModuleSubdirectoryFailsNamingTheModuleRoot(t *testing.T) {
+	moduleRoot := fixtureDir(t)
+	_, err := scanModule(filepath.Join(moduleRoot, "store"), "linux", "")
+	if err == nil {
+		t.Fatal("want an error when the directory is a subdirectory of the module")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(moduleRoot)) {
+		t.Fatalf("error does not name the module root %q: %v", moduleRoot, err)
+	}
+}
+
+func TestProgramInModuleSubdirectoryExitsOneNamingTheModuleRoot(t *testing.T) {
+	moduleRoot := fixtureDir(t)
+	stdout, stderr, err := runProgram(t, filepath.Join(moduleRoot, "store"), "-goos", "linux")
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatalf("want exit code 1, got %v", err)
+	}
+	if len(stdout) != 0 {
+		t.Fatalf("stdout must be empty on failure, got %q", stdout)
+	}
+	if !strings.Contains(strings.ToLower(string(stderr)), strings.ToLower(moduleRoot)) {
+		t.Fatalf("stderr does not name the module root %q: %s", moduleRoot, stderr)
+	}
+}
+
 func mustScan(t *testing.T, moduleDir, goos string) moduleReport {
 	t.Helper()
 	report, err := scanModule(moduleDir, goos, "")
