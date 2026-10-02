@@ -117,6 +117,15 @@ func {
 (defn- crap-snapshot-file [module-root]
   (io/file module-root ".metrics" "crap.edn"))
 
+(def ^:private host-goos
+  (delay (-> (ProcessBuilder. ["go" "env" "GOOS"]) .start .getInputStream slurp str/trim)))
+
+(defn- measured-platform-name-count
+  "The tests run as the host build, so `platformName` is measured only when the
+  module has a variant for the host's GOOS."
+  [module-root]
+  (if (.isFile (io/file module-root "store" (str "store_" @host-goos ".go"))) 1 0))
+
 (describe "go crap snapshot"
   (it "writes the same entries for every package on each run"
     (with-tools
@@ -133,7 +142,8 @@ func {
         (should= first-snapshot second-snapshot)
         (should-contain "example.com.demo.store" measured-namespaces)
         (should-contain "example.com.demo" measured-namespaces)
-        (should= 1 (count (filter #(= "platformName" (:name %)) entries)))
+        (should= (measured-platform-name-count module-root)
+                 (count (filter #(= "platformName" (:name %)) entries)))
         (should= [] (tool-leftovers-in-fixture)))))
 
   (it "keeps the earlier entries of a package whose tests fail and measures the others"
