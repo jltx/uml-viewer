@@ -3,6 +3,7 @@
             [speclj.core :refer :all]
             [uml-viewer.application.overlay :as overlay]
             [uml-viewer.go-language.graph-go :as graph-go]
+            [uml-viewer.go-language.go-spec-support :as support :refer [fixture-root]]
             [uml-viewer.go-language.metrics-go :as metrics-go]
             [uml-viewer.graph :as graph]))
 
@@ -302,20 +303,8 @@
     (should= [(mutation-form "defn-/render" 4 0)]
              (metrics-go/merge-forms render-file-forms [] tool-package []))))
 
-(def ^:private fixture-root "spec/fixtures/go/demo")
-
-(def ^:private go-installed?
-  (delay (try (zero? (-> (ProcessBuilder. ["go" "version"])
-                         (.redirectOutput java.lang.ProcessBuilder$Redirect/DISCARD)
-                         (.redirectError java.lang.ProcessBuilder$Redirect/DISCARD)
-                         .start
-                         .waitFor))
-              (catch java.io.IOException _ false))))
-
 (defmacro ^:private with-go [& body]
-  `(if @go-installed?
-     (do ~@body)
-     (println "go not found; Go metrics overlay skipped")))
+  `(support/when-go-installed "go not found; Go metrics overlay skipped" ~@body))
 
 (def ^:private string-methods-crap-report
   (str/join

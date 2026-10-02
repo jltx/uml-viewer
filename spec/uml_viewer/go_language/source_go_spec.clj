@@ -3,25 +3,15 @@
             [speclj.core :refer :all]
             [uml-viewer.application.detail :as detail]
             [uml-viewer.go-language.graph-go :as graph-go]
+            [uml-viewer.go-language.go-spec-support :as support :refer [fixture-root]]
             [uml-viewer.go-language.source-go :as source-go]
             [uml-viewer.graph :as graph]
             [uml-viewer.source :as source]))
 
-(def ^:private fixture-root "spec/fixtures/go/demo")
 (def ^:private query-file (str fixture-root "/store/query.go"))
 
-(def ^:private go-installed?
-  (delay (try (zero? (-> (ProcessBuilder. ["go" "version"])
-                         (.redirectOutput java.lang.ProcessBuilder$Redirect/DISCARD)
-                         (.redirectError java.lang.ProcessBuilder$Redirect/DISCARD)
-                         .start
-                         .waitFor))
-              (catch java.io.IOException _ false))))
-
 (defmacro ^:private with-go [& body]
-  `(if @go-installed?
-     (do ~@body)
-     (println "go not found; Go source navigation skipped")))
+  `(support/when-go-installed "go not found; Go source navigation skipped" ~@body))
 
 (defn- line-starting-with [file declaration]
   (->> (str/split-lines (slurp file))

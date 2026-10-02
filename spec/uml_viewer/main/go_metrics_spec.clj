@@ -3,9 +3,8 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [speclj.core :refer :all]
+            [uml-viewer.go-language.go-spec-support :refer [fixture-root temp-copy-of-fixture]]
             [uml-viewer.main.go-metrics :as go-metrics]))
-
-(def ^:private fixture-root "spec/fixtures/go/demo")
 
 (defn- starts? [command]
   (try (-> (ProcessBuilder. ^java.util.List command)
@@ -27,17 +26,6 @@
   `(if @tools-installed?
      (do ~@body)
      (println "go, sh, crap4go, or mutate4go not found; Go metrics runner skipped")))
-
-(defn- temp-copy-of-fixture []
-  (let [fixture (io/file fixture-root)
-        copy-root (io/file (System/getProperty "java.io.tmpdir")
-                           (str "uml-go-metrics-" (System/nanoTime)))]
-    (doseq [file (file-seq fixture)
-            :when (.isFile file)]
-      (let [copy (io/file copy-root (str (.relativize (.toPath fixture) (.toPath file))))]
-        (io/make-parents copy)
-        (io/copy file copy)))
-    copy-root))
 
 (defn- write-policy
   "Path of a policy file, written into `module-root`, whose `:src` is that directory."

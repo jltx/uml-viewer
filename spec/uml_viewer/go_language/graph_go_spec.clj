@@ -4,33 +4,11 @@
             [speclj.core :refer :all]
             [uml-viewer.application.ir-generator :as ir-generator]
             [uml-viewer.go-language.graph-go :as graph-go]
+            [uml-viewer.go-language.go-spec-support :as support :refer [fixture-root temp-copy-of-fixture]]
             [uml-viewer.graph :as graph]))
 
-(def ^:private fixture-root "spec/fixtures/go/demo")
-
-(def ^:private go-installed?
-  (delay (try (zero? (-> (ProcessBuilder. ["go" "version"])
-                         (.redirectOutput java.lang.ProcessBuilder$Redirect/DISCARD)
-                         (.redirectError java.lang.ProcessBuilder$Redirect/DISCARD)
-                         .start
-                         .waitFor))
-              (catch java.io.IOException _ false))))
-
 (defmacro ^:private with-go [& body]
-  `(if @go-installed?
-     (do ~@body)
-     (println "go not found; Go scan skipped")))
-
-(defn- temp-copy-of-fixture []
-  (let [fixture (io/file fixture-root)
-        copy-root (io/file (System/getProperty "java.io.tmpdir")
-                           (str "uml-go-" (System/nanoTime)))]
-    (doseq [file (file-seq fixture)
-            :when (.isFile file)]
-      (let [copy (io/file copy-root (str (.relativize (.toPath fixture) (.toPath file))))]
-        (io/make-parents copy)
-        (io/copy file copy)))
-    copy-root))
+  `(support/when-go-installed "go not found; Go scan skipped" ~@body))
 
 (defn- temp-module
   "A new directory holding the Go module `module-path`: its go.mod and
