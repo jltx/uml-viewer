@@ -168,8 +168,8 @@ With no `diagram.edn`, `-Restart` picks `examples\<project>.edn`, or the
 first `examples\*.edn` that is not a policy. `-Help` prints the usage and
 starts nothing. If PowerShell refuses to run the script, start it with
 `powershell -ExecutionPolicy Bypass -File <path>\uml.ps1 …`. From the
-checkout itself, `clojure -M:run --restart examples/go-demo.edn` does the
-same without the script.
+checkout itself, `clojure -M:run --restart examples/uml-viewer.edn` does
+the same without the script.
 
 To change the diagram, edit the policy and run `clojure -M:ir <policy>`
 (see [Policy](#policy)). The open viewer reloads on file change, or press
