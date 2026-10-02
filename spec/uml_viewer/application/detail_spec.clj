@@ -161,3 +161,34 @@
     (let [rows (detail/rows (detail/model (scene) :a))
           name-row (first (filter #(= :name (:kind %)) rows))]
       (should-be-nil (detail/rel-at rows (:y name-row))))))
+
+(defn- package-model []
+  (detail/model
+    (compose/compile-diagram
+      (ir/normalize
+        {:title "Pkg"
+         :packages [{:id :p :label "P"
+                     :classes [{:id :pkg :name "pkg" :ns "demo.pkg"
+                                :lang :go :file "pkg/a.go"
+                                :ops [{:name "A" :file "pkg/a.go" :line 3}
+                                      {:name "B" :file "pkg/b.go" :line 7}
+                                      {:name "C"}]}]}]}))
+    :pkg))
+
+(describe "member-ident"
+  (it "opens the member's own file and line"
+    (let [ident (detail/member-ident (package-model) "B")]
+      (should= "pkg/b.go" (:file ident))
+      (should= 7 (:line ident))
+      (should= "B" (:name ident))))
+
+  (it "falls back to the class file without a line when the op has no file"
+    (let [ident (detail/member-ident (package-model) "C")]
+      (should= "pkg/a.go" (:file ident))
+      (should-not (contains? ident :line))))
+
+  (it "keeps the class-level identity for the one-arg arity and a blank name"
+    (should= {:ns "demo.pkg" :lang :go :file "pkg/a.go"}
+             (detail/member-ident (package-model)))
+    (should= {:ns "demo.pkg" :lang :go :file "pkg/a.go"}
+             (detail/member-ident (package-model) ""))))

@@ -36,10 +36,15 @@
   "Source-window identity for a class card. `member-name` may be nil."
   ([model] (member-ident model nil))
   ([model member-name]
-   (cond-> {:ns (:ns model)}
-     (seq (str member-name)) (assoc :name (str member-name))
-     (:lang model) (assoc :lang (:lang model))
-     (:file model) (assoc :file (:file model)))))
+   (let [member (when (seq (str member-name))
+                  (first (filter #(= (str member-name) (:name %))
+                                 (:ops (:class model)))))
+         file (or (:file member) (:file model))]
+     (cond-> {:ns (:ns model)}
+       (seq (str member-name)) (assoc :name (str member-name))
+       (:lang model) (assoc :lang (:lang model))
+       file (assoc :file file)
+       (:line member) (assoc :line (:line member))))))
 
 (defn model
   "Class card for the detail window, or nil if `id` is unknown."
