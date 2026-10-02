@@ -625,9 +625,10 @@ Limits:
   opens the first `init`. When metrics are loaded, the `init` functions of
   a package share one card row and get no metrics; without metrics, each
   `init` has its own row.
-- Member navigation needs a hierarchical policy (the default). A policy
-  with `:packages` or `:diagrams` drops the members from the generated
-  classes, so a member click opens the first file of the package.
+- Member navigation needs a hierarchical policy (the default). With a
+  `:packages` or `:diagrams` policy, the card lists only the members that
+  have metrics, and a click finds a member only when it is declared in the
+  first file of the package.
 - The tree view titles a box from the last segment of its id, capitalized:
   `cmd.demo` is titled `Demo`, even though its package is named `main`.
 - Two packages of the module that map to one class id make `clojure -M:ir`
