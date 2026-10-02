@@ -863,6 +863,17 @@
     (catch Throwable t
       (snapshot-failed! (or (.getMessage t) (str t))))))
 
+(defn- whole-scene-view
+  "`state` zoomed out until the whole scene is on the window. A snapshot
+  cannot be scrolled, so anything off the window would be lost."
+  [state]
+  (let [dims (view-dims)
+        fitted (events/fit-view state dims)]
+    (when-not (events/scene-visible? fitted dims)
+      (binding [*out* *err*]
+        (println "UML viewer: snapshot is cropped; the diagram does not fit at the smallest zoom.")))
+    fitted))
+
 (defn- snapshot-setup [state]
   (q/frame-rate 30)
   (q/color-mode :rgb)
@@ -871,7 +882,7 @@
   ;; Processing saves frames on a background thread by default; the JVM
   ;; exits right after the save, so the file must be written first.
   (q/hint :disable-async-saveframe)
-  state)
+  (whole-scene-view state))
 
 (defn- snapshot-draw [state out-path]
   (draw/draw-state state)

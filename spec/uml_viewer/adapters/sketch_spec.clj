@@ -776,6 +776,31 @@
             (should= {:focus [:shop]} ((:setup @opts)))
             (should= [:disable-async-saveframe] @hints))))))
 
+  (it "zooms the snapshot out until the whole scene is on the window"
+    (let [opts (atom nil)
+          setup-state (fn [size]
+                        (let [err (java.io.StringWriter.)
+                              state (atom nil)]
+                          (with-redefs [q/sketch (fn [& args] (reset! opts (apply hash-map args)))
+                                        q/hint (fn [_])]
+                            (sketch/snapshot! {:scene {:size size} :cam-x 0 :cam-y 0} "out.png")
+                            (quiet-quil
+                              (fn []
+                                (binding [*err* err]
+                                  (reset! state ((:setup @opts)))))))
+                          [@state (str err)]))
+          dims {:view-w 1220 :window-h 920}
+          [small small-err] (setup-state {:w 1220 :h 920})
+          [large large-err] (setup-state {:w 3000 :h 2500})
+          [huge huge-err] (setup-state {:w 100000 :h 500})]
+      (should= {:scene {:size {:w 1220 :h 920}} :cam-x 0 :cam-y 0} small)
+      (should= "" small-err)
+      (should (< (:zoom large) 1.0))
+      (should (events/scene-visible? large dims))
+      (should= "" large-err)
+      (should= events/zoom-min (:zoom huge))
+      (should (re-find #"snapshot is cropped" huge-err))))
+
   (it "saves the snapshot once the frame has settled, then exits 0"
     (let [opts (atom nil)
           log (atom [])
