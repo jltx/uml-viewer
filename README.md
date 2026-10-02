@@ -866,8 +866,8 @@ not special-case languages in the class card.
 **Go** (`uml-viewer.go-language.source-go`) opens the member's `:file` at
 its `:line`, as the scanner recorded them. If that line no longer declares
 the member, it searches the file for the declaration. When the search finds
-none, the recorded line stands. Clicking the class name opens the
-package's first file.
+none, the recorded line stands only if the file still has that line.
+Clicking the class name opens the package's first file.
 
 Quil stays in `adapters.draw` and `adapters.sketch`. The rest of the engine
 does not depend on Processing.
