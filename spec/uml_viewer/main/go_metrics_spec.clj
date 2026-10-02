@@ -103,9 +103,7 @@
                                  :coverage 12.5
                                  :crap 39.8}]
         (spit (io/file module-root "store" "store_test.go")
-              "
-func TestAlwaysFails(t *testing.T) { t.Fatal(\"failing on purpose\") }
-"
+              "\nfunc TestAlwaysFails(t *testing.T) { t.Fatal(\"failing on purpose\") }\n"
               :append true)
         (io/make-parents (crap-snapshot-file module-root))
         (spit (crap-snapshot-file module-root) (pr-str {:entries [earlier-store-entry]}))
@@ -118,3 +116,34 @@ func TestAlwaysFails(t *testing.T) { t.Fatal(\"failing on purpose\") }
           (should= ["Version"]
                    (map :name (filter #(= "example.com.demo" (:namespace %)) entries)))
           (should-contain "example.com.demo.internal.util" (set (map :namespace entries))))))))
+
+(defn- give-close-a-mutation-site
+  "The fixture's Close has nothing mutate4go can mutate; this adds a comparison."
+  [module-root]
+  (let [open-file (io/file module-root "store" "open.go")]
+    (spit open-file (str/replace (slurp open-file)
+                                 "s.name = \"\""
+                                 "if s.name == \"\" {\n\t\treturn nil\n\t}\n\ts.name = \"\""))))
+
+(defn- form-with-id [forms id]
+  (first (filter #(= id (:id %)) forms)))
+
+(describe "go mutation snapshot"
+  (it "writes the same per-function site counts of a package on each run"
+    (with-tools
+      (let [module-root (temp-copy-of-fixture)
+            policy-path (write-policy module-root)
+            store-snapshot-file (io/file module-root ".metrics/mutate/example.com/demo/store.edn")]
+        (give-close-a-mutation-site module-root)
+        (let [first-run (run-captured "mutate" policy-path {})
+              first-snapshot (edn/read-string (slurp store-snapshot-file))
+              second-run (run-captured "mutate" policy-path {})
+              second-snapshot (edn/read-string (slurp store-snapshot-file))
+              forms (:forms first-snapshot)]
+          (should= 0 (:status first-run))
+          (should= 0 (:status second-run))
+          (should= "example.com.demo.store" (:namespace first-snapshot))
+          (should (pos? (:sites (form-with-id forms "defn/Store.Close"))))
+          (should= {:id "defn/Store.String" :killed 1 :survived 0 :uncovered 0 :sites 1}
+                   (form-with-id forms "defn/Store.String"))
+          (should= first-snapshot second-snapshot))))))
