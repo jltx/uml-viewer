@@ -85,8 +85,8 @@
         loaded (document/load-path path)
         state (if focus (focus-state loaded focus) loaded)]
     (cond
-      ;; Processing picks the format from the extension and appends .tif to
-      ;; one it does not know, so any other name would not be the file saved.
+      ;; Processing picks the format from the extension, so another name
+      ;; would not be a PNG.
       (not (str/ends-with? (str/lower-case png-path) ".png"))
       (fail! (str "snapshot file must end in .png: " png-path))
 
