@@ -72,6 +72,12 @@
       (should-not (.exists (io/file module-root ".metrics")))
       (should-not (.exists (io/file module-root "target"))))))
 
+(defn- tool-leftovers-in-fixture
+  "What a tool run inside the tracked fixture would leave behind. `target` is
+  git-ignored, so `git status` alone would not show such a run."
+  []
+  (filterv #(.exists (io/file fixture-root %)) [".metrics" "target"]))
+
 (defn- crap-snapshot-file [module-root]
   (io/file module-root ".metrics" "crap.edn"))
 
@@ -91,7 +97,8 @@
         (should= first-snapshot second-snapshot)
         (should-contain "example.com.demo.store" measured-namespaces)
         (should-contain "example.com.demo" measured-namespaces)
-        (should= 1 (count (filter #(= "platformName" (:name %)) entries))))))
+        (should= 1 (count (filter #(= "platformName" (:name %)) entries)))
+        (should= [] (tool-leftovers-in-fixture)))))
 
   (it "keeps the earlier entries of a package whose tests fail and measures the others"
     (with-tools
@@ -146,7 +153,8 @@
           (should (pos? (:sites (form-with-id forms "defn/Store.Close"))))
           (should= {:id "defn/Store.String" :killed 1 :survived 0 :uncovered 0 :sites 1}
                    (form-with-id forms "defn/Store.String"))
-          (should= first-snapshot second-snapshot))))))
+          (should= first-snapshot second-snapshot)
+          (should= [] (tool-leftovers-in-fixture)))))))
 
 (describe "go metrics since a git ref"
   (it "reads the git ref that follows --since"
