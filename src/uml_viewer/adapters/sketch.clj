@@ -843,6 +843,7 @@
     :on-close #'on-main-close
     :middleware [m/fun-mode])))
 
+;; The window and its font may not be ready on the first frame.
 (def ^:private snapshot-frame 3)
 
 (defn- fail-vm! []

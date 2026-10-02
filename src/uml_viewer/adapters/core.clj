@@ -67,12 +67,16 @@
   "`state` opened at the node `dotted-id` names, as if each box on the way
   was double-clicked. Nil when a step is not a box that opens."
   [state dotted-id]
-  (reduce (fn [state id]
-            (if (:drill? (hit/class-by-id (:scene state) id))
-              (events/drill state id)
-              (reduced nil)))
-          state
-          (node-ids dotted-id)))
+  (let [opened (reduce (fn [state id]
+                         (if (:drill? (hit/class-by-id (:scene state) id))
+                           (events/drill state id)
+                           (reduced nil)))
+                       state
+                       (node-ids dotted-id))]
+    ;; A proposal group with the same id makes drill open that group, which
+    ;; leaves the namespace view at the top level.
+    (when-not (:open-layer opened)
+      opened)))
 
 (defn- start-snapshot! [path png-path focus]
   (let [png-file (.getAbsoluteFile (io/file png-path))
@@ -95,10 +99,13 @@
 (defn start!
   "Launch the viewer. `source-impl` satisfies `LanguageSource`."
   [source-impl & args]
-  (let [{:keys [path restart? help? snapshot focus]} (parse-args args)]
+  (let [{:keys [path restart? help? snapshot focus] :as parsed} (parse-args args)]
     (cond
       help?
       (do (print help-text) :help)
+
+      (some #(and (contains? parsed %) (nil? (% parsed))) [:snapshot :focus])
+      (fail! (str "--snapshot and --focus each need a value.\n\n" help-text))
 
       snapshot
       (start-snapshot! path snapshot focus)

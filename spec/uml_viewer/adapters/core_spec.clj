@@ -108,7 +108,16 @@
     (should-be-nil (core/focus-state (tree-state) "shop.nowhere"))
     (should-be-nil (core/focus-state (tree-state) "billing"))
     (should-be-nil (core/focus-state (tree-state) "report"))
-    (should-be-nil (core/focus-state (tree-state) "shop.cart"))))
+    (should-be-nil (core/focus-state (tree-state) "shop.cart")))
+
+  (it "is nil when a proposal group with the same id would open instead"
+    (let [grouped (assoc-in (tree-state) [:doc :proposals]
+                            [{:id :split :name "split"
+                              :layers [{:id :front :label "Front"
+                                        :nses [{:id :shop
+                                                :label "Shop"
+                                                :nses [:shop.cart]}]}]}])]
+      (should-be-nil (core/focus-state grouped "shop")))))
 
 (describe "snapshot start"
   (it "hands the loaded diagram and the absolute PNG path to the snapshot sketch"
@@ -160,4 +169,14 @@
       (should= [] (:snapshot ran))
       (should= [] (:live ran))
       (should (re-find #"--focus is only supported with --snapshot" (:err ran)))
-      (should (re-find #"Usage: clj -M:run" (:err ran))))))
+      (should (re-find #"Usage: clj -M:run" (:err ran)))))
+
+  (it "prints usage and exits 1 when --snapshot or --focus has no value"
+    (doseq [args [["demo.edn" "--snapshot"]
+                  ["--snapshot" writable-png "demo.edn" "--focus"]]]
+      (let [ran (apply run-start (tree-state) args)]
+        (should= [1] (:exits ran))
+        (should= [] (:snapshot ran))
+        (should= [] (:live ran))
+        (should (re-find #"--snapshot and --focus each need a value" (:err ran)))
+        (should (re-find #"Usage: clj -M:run" (:err ran)))))))
