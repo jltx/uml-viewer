@@ -178,16 +178,39 @@
   "Go metrics need sh on PATH (run from Git Bash, or add Git's usr\\bin to PATH)")
 
 (def ^:private usage
-  "usage: clojure -M:go-metrics (crap|mutate) <policy.edn> [--since <git-ref>]")
+  "usage: clojure -M:go-metrics (crap|mutate|refresh) <policy.edn> [--since <git-ref>]")
+
+(defn- measure-module [command module-root go-opts since]
+  (if since
+    (measure-since command module-root go-opts since)
+    (measure command module-root go-opts nil)))
+
+(defn- write-diagram
+  "Regenerates the diagram of the policy at `policy-path` and prints where it
+  went. Returns the exit status."
+  [policy-path]
+  (try (println (str "Wrote " (ir-generator/generate graph-go/impl policy-path)))
+       0
+       (catch Exception failure
+         (println (str "diagram not written: " (ex-message failure)))
+         1)))
+
+(defn- refresh
+  "Measures crap, then regenerates the diagram even when some package could
+  not be measured. Mutation is left out: it is slow and rewrites source files."
+  [policy-path module-root go-opts since]
+  (let [crap-status (measure-module "crap" module-root go-opts since)
+        diagram-status (write-diagram policy-path)]
+    (max crap-status diagram-status)))
 
 (defn run!
   "Measure the Go module of the policy at `policy-path` and write its
-  snapshot files. `command` is \"crap\" or \"mutate\"; `opts` may hold
-  `:since`, a git ref. Returns the exit status."
+  snapshot files. `command` is \"crap\", \"mutate\", or \"refresh\" (crap, then
+  the diagram); `opts` may hold `:since`, a git ref. Returns the exit status."
   [command policy-path opts]
   (cond
-    (not (and (#{"crap" "mutate"} command) policy-path)) (do (println usage)
-                                                             1)
+    (not (and (#{"crap" "mutate" "refresh"} command) policy-path)) (do (println usage)
+                                                                       1)
     (not (.isFile (io/file policy-path))) (do (println (str "policy file not found: " policy-path))
                                               1)
     :else
@@ -202,8 +225,8 @@
                                                1)
           (not (sh-starts? module-root)) (do (println sh-missing-message)
                                              1)
-          (:since opts) (measure-since command module-root go-opts (:since opts))
-          :else (measure command module-root go-opts nil))
+          (= "refresh" command) (refresh policy-path module-root go-opts (:since opts))
+          :else (measure-module command module-root go-opts (:since opts)))
         ;; every ex-info raised in here is a printable startup or scan failure
         (catch clojure.lang.ExceptionInfo failure
           (println (ex-message failure))

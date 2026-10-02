@@ -678,7 +678,15 @@ absolute path is fine):
 clojure -M:go-metrics crap my-module.policy.edn
 clojure -M:go-metrics mutate my-module.policy.edn
 clojure -M:go-metrics mutate my-module.policy.edn --since main
+clojure -M:go-metrics refresh my-module.policy.edn
 ```
+
+`refresh` runs `crap` (it takes the same `--since`), then regenerates the
+diagram at the policy's `:out` and prints `Wrote <path>`. A running viewer
+reloads when the diagram or `.metrics` changes (`R` forces it). The diagram
+is still written when a package could not be measured, and the exit status
+is then 1. `refresh` never runs `mutate`: that stays a separate, explicit
+command, because it is slow and rewrites source files.
 
 From the Go project, using the dependency form that `scripts/get-uml-viewer`
 writes (`<checkout>` is the absolute path of the uml-viewer checkout):

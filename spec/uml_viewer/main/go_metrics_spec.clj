@@ -51,7 +51,7 @@
   (status-and-output #(#'go-metrics/status-of-arguments arguments)))
 
 (def ^:private usage-line
-  "usage: clojure -M:go-metrics (crap|mutate) <policy.edn> [--since <git-ref>]")
+  "usage: clojure -M:go-metrics (crap|mutate|refresh) <policy.edn> [--since <git-ref>]")
 
 (describe "go metrics preflight"
   (it "stops before any tool runs when sh cannot be started"
@@ -160,6 +160,83 @@ func {
           (should= ["Version"]
                    (map :name (filter #(= "example.com.demo" (:namespace %)) entries)))
           (should-contain "example.com.demo.internal.util" (set (map :namespace entries))))))))
+
+(defn- write-policy-with-diagram
+  "Path of a policy file, written into `module-root`, that also names an
+  absolute diagram file inside it. `diagram-name` is that file's name."
+  [module-root diagram-name]
+  (let [policy-file (io/file module-root "demo.policy.edn")]
+    (spit policy-file (pr-str {:lang :go
+                               :src (.getPath module-root)
+                               :prefix "example.com.demo"
+                               :go {:goos "linux"}
+                               :foreign '[std]
+                               :hierarchical true
+                               :out (.getPath (io/file module-root diagram-name))}))
+    (.getPath policy-file)))
+
+(defn- diagram-class [diagram-file class-id]
+  (first (filter #(= class-id (:id %))
+                 (:classes (edn/read-string (slurp diagram-file))))))
+
+(describe "go refresh"
+  (it "measures crap and writes the diagram from one command, the same on each run"
+    (with-tools
+      (let [module-root (temp-copy-of-fixture)
+            policy-path (write-policy-with-diagram module-root "demo.edn")
+            diagram-file (io/file module-root "demo.edn")
+            first-run (run-captured "refresh" policy-path {})
+            first-snapshot (slurp (crap-snapshot-file module-root))
+            first-diagram (slurp diagram-file)
+            second-run (run-captured "refresh" policy-path {})
+            store-class (diagram-class diagram-file :store)]
+        (should= 0 (:status first-run))
+        (should= 0 (:status second-run))
+        (should-contain (str "Wrote " (.getPath diagram-file)) (str/split-lines (:output first-run)))
+        (should (seq (:ops store-class)))
+        (should (every? #(and (:file %) (:line %)) (:ops store-class)))
+        (should= first-snapshot (slurp (crap-snapshot-file module-root)))
+        (should= first-diagram (slurp diagram-file))
+        (should= [] (tool-leftovers-in-fixture)))))
+
+  (it "writes the diagram though a package could not be measured"
+    (with-tools
+      (let [module-root (temp-copy-of-fixture)
+            policy-path (write-policy-with-diagram module-root "demo.edn")]
+        (spit (io/file module-root "store" "store_test.go")
+              "
+func TestAlwaysFails(t *testing.T) { t.Fatal(\"failing on purpose\") }
+"
+              :append true)
+        (let [{:keys [status output]} (run-captured "refresh" policy-path {})]
+          (should= 1 status)
+          (should-contain "not measured: example.com/demo/store" (str/split-lines output))
+          (should (diagram-class (io/file module-root "demo.edn") :store))))))
+
+  (it "returns 1 and names the failure when the diagram cannot be written"
+    (with-tools
+      (let [module-root (temp-copy-of-fixture)
+            policy-path (write-policy-with-diagram module-root "no-such-directory/demo.edn")
+            {:keys [status output]} (run-captured "refresh" policy-path {})]
+        (should= 1 status)
+        (should-contain "no-such-directory" output)
+        (should-not (.exists (io/file module-root "no-such-directory"))))))
+
+  (it "writes no diagram when the module cannot be scanned"
+    (with-tools
+      (let [module-root (temp-module-with-syntax-error)
+            policy-file (io/file module-root "broken.policy.edn")
+            diagram-file (io/file module-root "broken.edn")]
+        (spit policy-file (pr-str {:lang :go :src (.getPath module-root)
+                                   :out (.getPath diagram-file)}))
+        (let [{:keys [status output]} (run-captured "refresh" (.getPath policy-file) {})]
+          (should= 1 status)
+          (should-contain "broken.go" output)
+          (should-not (.exists diagram-file))))))
+
+  (it "prints the usage line when --since has no git ref"
+    (should= {:status 1 :output (str usage-line (System/lineSeparator))}
+             (command-line-captured "refresh" "no-policy.edn" "--since"))))
 
 (defn- give-close-a-mutation-site
   "The fixture's Close has nothing mutate4go can mutate; this adds a comparison."
