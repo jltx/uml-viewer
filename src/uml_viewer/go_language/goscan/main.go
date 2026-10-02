@@ -66,9 +66,10 @@ type listedPackage struct {
 
 func main() {
 	goos := flag.String("goos", "", "target GOOS; empty inherits the environment")
+	goarch := flag.String("goarch", "", "target GOARCH; empty inherits the environment")
 	flag.Parse()
 
-	report, err := scanModule(".", *goos)
+	report, err := scanModule(".", *goos, *goarch)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -76,12 +77,12 @@ func main() {
 	fmt.Print(formatEDN(report))
 }
 
-func scanModule(moduleDir, goos string) (moduleReport, error) {
-	resolvedGoos, err := effectiveGoos(moduleDir, goos)
+func scanModule(moduleDir, goos, goarch string) (moduleReport, error) {
+	resolvedGoos, err := effectiveGoos(moduleDir, goos, goarch)
 	if err != nil {
 		return moduleReport{}, err
 	}
-	listed, err := listPackages(moduleDir, goos)
+	listed, err := listPackages(moduleDir, goos, goarch)
 	if err != nil {
 		return moduleReport{}, err
 	}
@@ -143,12 +144,15 @@ func scanModule(moduleDir, goos string) (moduleReport, error) {
 	return report, nil
 }
 
-func runGo(moduleDir, goos string, args ...string) ([]byte, error) {
+func runGo(moduleDir, goos, goarch string, args ...string) ([]byte, error) {
 	command := exec.Command("go", args...)
 	command.Dir = moduleDir
 	command.Env = os.Environ()
 	if goos != "" {
 		command.Env = append(command.Env, "GOOS="+goos)
+	}
+	if goarch != "" {
+		command.Env = append(command.Env, "GOARCH="+goarch)
 	}
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
@@ -158,16 +162,16 @@ func runGo(moduleDir, goos string, args ...string) ([]byte, error) {
 	return stdout.Bytes(), nil
 }
 
-func effectiveGoos(moduleDir, goos string) (string, error) {
-	output, err := runGo(moduleDir, goos, "env", "GOOS")
+func effectiveGoos(moduleDir, goos, goarch string) (string, error) {
+	output, err := runGo(moduleDir, goos, goarch, "env", "GOOS")
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(output)), nil
 }
 
-func listPackages(moduleDir, goos string) ([]listedPackage, error) {
-	output, err := runGo(moduleDir, goos, "list", "-e", "-json", "./...")
+func listPackages(moduleDir, goos, goarch string) ([]listedPackage, error) {
+	output, err := runGo(moduleDir, goos, goarch, "list", "-e", "-json", "./...")
 	if err != nil {
 		return nil, err
 	}

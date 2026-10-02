@@ -51,7 +51,7 @@ func copyFixtureToTemp(t *testing.T) string {
 
 func scanFixture(t *testing.T, goos string) moduleReport {
 	t.Helper()
-	report, err := scanModule(fixtureDir(t), goos)
+	report, err := scanModule(fixtureDir(t), goos, "")
 	if err != nil {
 		t.Fatalf("scanModule(%q): %v", goos, err)
 	}
@@ -302,7 +302,7 @@ func TestPseudoImportCIsOmitted(t *testing.T) {
 func TestFunctionBodySyntaxErrorFailsWithFileName(t *testing.T) {
 	moduleDir := copyFixtureToTemp(t)
 	appendToFile(t, filepath.Join(moduleDir, "store", "query.go"), "\nfunc broken() {\n\tx := \n}\n")
-	_, err := scanModule(moduleDir, "linux")
+	_, err := scanModule(moduleDir, "linux", "")
 	if err == nil {
 		t.Fatal("want an error for a syntax error in a function body")
 	}
@@ -314,7 +314,7 @@ func TestFunctionBodySyntaxErrorFailsWithFileName(t *testing.T) {
 func TestImportSyntaxErrorFails(t *testing.T) {
 	moduleDir := copyFixtureToTemp(t)
 	writeFile(t, filepath.Join(moduleDir, "demo_bad.go"), "package demo\n\nimport (\n")
-	if _, err := scanModule(moduleDir, "linux"); err == nil {
+	if _, err := scanModule(moduleDir, "linux", ""); err == nil {
 		t.Fatal("want an error for a syntax error in the import section")
 	}
 }
@@ -322,14 +322,14 @@ func TestImportSyntaxErrorFails(t *testing.T) {
 func TestDirectoryWithoutGoModFails(t *testing.T) {
 	emptyDir := t.TempDir()
 	writeFile(t, filepath.Join(emptyDir, "main.go"), "package main\n\nfunc main() {}\n")
-	if _, err := scanModule(emptyDir, "linux"); err == nil {
+	if _, err := scanModule(emptyDir, "linux", ""); err == nil {
 		t.Fatal("want an error when the directory has no go.mod")
 	}
 }
 
 func mustScan(t *testing.T, moduleDir, goos string) moduleReport {
 	t.Helper()
-	report, err := scanModule(moduleDir, goos)
+	report, err := scanModule(moduleDir, goos, "")
 	if err != nil {
 		t.Fatalf("scanModule(%q): %v", moduleDir, err)
 	}
@@ -399,6 +399,42 @@ func TestProgramOutputIsByteIdenticalAcrossRuns(t *testing.T) {
 	}
 	if !bytes.HasPrefix(first, []byte("{:module \"example.com/demo\"\n :goos \"linux\"\n")) {
 		t.Fatalf("unexpected output start: %.80s", first)
+	}
+}
+
+func architectureModule(t *testing.T) string {
+	t.Helper()
+	moduleDir := t.TempDir()
+	writeFile(t, filepath.Join(moduleDir, "go.mod"), "module example.com/archdemo\n\ngo 1.21\n")
+	writeFile(t, filepath.Join(moduleDir, "x_amd64.go"), "package archdemo\n\nfunc OnAmd64() {}\n")
+	writeFile(t, filepath.Join(moduleDir, "x_arm64.go"), "package archdemo\n\nfunc OnArm64() {}\n")
+	return moduleDir
+}
+
+func TestProgramGoarchFlagSelectsArchitectureFiles(t *testing.T) {
+	moduleDir := architectureModule(t)
+	for goarch, wantDecl := range map[string]string{"arm64": "OnArm64", "amd64": "OnAmd64"} {
+		stdout, stderr, err := runProgram(t, moduleDir, "-goos", "linux", "-goarch", goarch)
+		if err != nil {
+			t.Fatalf("-goarch %s: %v\n%s", goarch, err, stderr)
+		}
+		wantDecls := `:decls [{:name "` + wantDecl + `" :kind :func :file "x_` + goarch + `.go" :line 3 :exported true}]}`
+		if !strings.Contains(string(stdout), wantDecls) {
+			t.Fatalf("-goarch %s: want only %s, got:\n%s", goarch, wantDecl, stdout)
+		}
+	}
+}
+
+func TestEmptyGoarchInheritsEnvironment(t *testing.T) {
+	moduleDir := architectureModule(t)
+	t.Setenv("GOARCH", "arm64")
+	report, err := scanModule(moduleDir, "linux", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	archdemo := findPackage(t, report, "example.com/archdemo")
+	if !equalStrings(archdemo.Files, []string{"x_arm64.go"}) {
+		t.Fatalf("files = %v, want the arm64 file of the environment's GOARCH", archdemo.Files)
 	}
 }
 
