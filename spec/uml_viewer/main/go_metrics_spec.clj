@@ -192,9 +192,10 @@
             store-snapshot-file (io/file module-root ".metrics/mutate/example.com/demo/store.edn")]
         (give-close-a-mutation-site module-root)
         (let [first-run (run-captured "mutate" policy-path {})
-              first-snapshot (edn/read-string (slurp store-snapshot-file))
+              first-snapshot-text (slurp store-snapshot-file)
               second-run (run-captured "mutate" policy-path {})
-              second-snapshot (edn/read-string (slurp store-snapshot-file))
+              second-snapshot-text (slurp store-snapshot-file)
+              first-snapshot (edn/read-string first-snapshot-text)
               forms (:forms first-snapshot)]
           (should= 0 (:status first-run))
           (should= 0 (:status second-run))
@@ -202,7 +203,7 @@
           (should (pos? (:sites (form-with-id forms "defn/Store.Close"))))
           (should= {:id "defn/Store.String" :killed 1 :survived 0 :uncovered 0 :sites 1}
                    (form-with-id forms "defn/Store.String"))
-          (should= first-snapshot second-snapshot)
+          (should= first-snapshot-text second-snapshot-text)
           (should= [] (tool-leftovers-in-fixture))))))
 
   (it "returns once mutate4go ends, though a timed-out mutant leaves its test running"
