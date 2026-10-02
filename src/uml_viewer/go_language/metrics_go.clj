@@ -109,3 +109,12 @@
            :uncovered uncovered
            :sites (+ killed survived uncovered)})
         results))
+
+(defn select-packages
+  "The scanned packages to measure: all of them when `changed-files` is nil,
+  otherwise those that hold one of the changed files."
+  [facts changed-files]
+  (if (nil? changed-files)
+    (:packages facts)
+    (let [changed (set changed-files)]
+      (filterv #(some changed (:files %)) (:packages facts)))))

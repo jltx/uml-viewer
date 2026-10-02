@@ -158,3 +158,24 @@
     (should= ["defn-/Store.reset"]
              (map :id (metrics-go/mutation-forms
                         [{:name "Store.reset" :killed 1 :survived 0 :uncovered 0}])))))
+
+(def ^:private root-package
+  {:import-path "example.com/demo"
+   :ns "example.com.demo"
+   :name "demo"
+   :dir "."
+   :files ["demo.go"]
+   :decls [{:name "Version" :kind :func :file "demo.go" :line 3 :exported true}]})
+
+(def ^:private facts
+  {:module "example.com/demo" :goos "linux" :packages [root-package store-package]})
+
+(describe "go package selection"
+  (it "selects every package when no changed files are given"
+    (should= [root-package store-package] (metrics-go/select-packages facts nil)))
+
+  (it "selects only the packages that hold a changed file"
+    (should= [store-package] (metrics-go/select-packages facts ["store/query.go"])))
+
+  (it "selects no package when nothing changed"
+    (should= [] (metrics-go/select-packages facts []))))
