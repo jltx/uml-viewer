@@ -17,15 +17,19 @@
   The output goes to a file and stdin is closed at once: a pipe stays open
   for as long as any descendant of the child holds it, and mutate4go leaves
   the `go test` of a timed-out mutant running, so reading a pipe to its end
-  would wait for that orphan."
+  would wait for that orphan. Throws, with `:missing-executable` in the
+  data, when the program cannot be started."
   [directory command]
-  (let [output-file (java.io.File/createTempFile "go-metrics" ".out")]
+  (let [output-file (java.io.File/createTempFile "go-metrics" ".out")
+        builder (-> (ProcessBuilder. ^java.util.List command)
+                    (.directory directory)
+                    (.redirectErrorStream true)
+                    (.redirectOutput output-file))]
     (try
-      (let [process (-> (ProcessBuilder. ^java.util.List command)
-                        (.directory directory)
-                        (.redirectErrorStream true)
-                        (.redirectOutput output-file)
-                        .start)]
+      (let [process (try (.start builder)
+                         (catch java.io.IOException _
+                           (throw (ex-info (str (first command) " not found on PATH")
+                                           {:missing-executable (first command)}))))]
         (.close (.getOutputStream process))
         {:exit (.waitFor process) :output (slurp output-file)})
       (finally (.delete output-file)))))
@@ -33,7 +37,7 @@
 (defn- sh-starts? [module-root]
   (try (run-process module-root [(:sh *executables*) "-c" "exit 0"])
        true
-       (catch java.io.IOException _ false)))
+       (catch clojure.lang.ExceptionInfo _ false)))
 
 (defn- run-tool
   "Output of one tool invocation in the module root, or nil when the tool
@@ -185,14 +189,21 @@
     (let [policy (ir-generator/read-policy policy-path)
           module-root (io/file (or (:src policy) "."))
           go-opts (:go policy)]
-      (cond
-        ;; a process cannot start in a missing directory, which would read as a missing sh
-        (not (.isDirectory module-root)) (do (println (str "Go module root not found: " module-root))
+      (try
+        (cond
+          ;; a process cannot start in a missing directory, which would read as a missing sh
+          (not (.isDirectory module-root)) (do (println (str "Go module root not found: "
+                                                             module-root))
+                                               1)
+          (not (sh-starts? module-root)) (do (println sh-missing-message)
                                              1)
-        (not (sh-starts? module-root)) (do (println sh-missing-message)
-                                           1)
-        (:since opts) (measure-since command module-root go-opts (:since opts))
-        :else (measure command module-root go-opts nil)))))
+          (:since opts) (measure-since command module-root go-opts (:since opts))
+          :else (measure command module-root go-opts nil))
+        (catch clojure.lang.ExceptionInfo failure
+          (when-not (:missing-executable (ex-data failure))
+            (throw failure))
+          (println (ex-message failure))
+          1)))))
 
 (defn- parse-options
   "The options that the arguments after the policy path give, or nil when

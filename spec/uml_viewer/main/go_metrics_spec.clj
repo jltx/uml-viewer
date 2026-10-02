@@ -79,7 +79,21 @@
         "Go metrics need sh on PATH (run from Git Bash, or add Git's usr\\bin to PATH)"
         output)
       (should-not (.exists (io/file module-root ".metrics")))
-      (should-not (.exists (io/file module-root "target"))))))
+      (should-not (.exists (io/file module-root "target")))))
+
+  (it "names a tool that cannot be started and measures nothing"
+    (with-tools
+      (let [module-root (temp-copy-of-fixture)
+            policy-path (write-policy module-root)
+            {:keys [status output]}
+            (with-bindings {#'go-metrics/*executables* {:sh "sh"
+                                                        :crap4go "no-such-crap4go-program"
+                                                        :mutate4go "mutate4go"}}
+              (run-captured "crap" policy-path {}))]
+        (should= 1 status)
+        (should= (str "no-such-crap4go-program not found on PATH" (System/lineSeparator))
+                 output)
+        (should-not (.exists (io/file module-root ".metrics")))))))
 
 (defn- tool-leftovers-in-fixture
   "What a tool run inside the tracked fixture would leave behind. `target` is
