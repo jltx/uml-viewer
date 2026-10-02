@@ -120,6 +120,15 @@
       (should-contain "no-such-go-program" (ex-message failure))
       (should (instance? java.io.IOException (ex-cause failure)))))
 
+  (it "throws naming the module root when it is not a directory"
+    (let [missing-root (io/file (System/getProperty "java.io.tmpdir")
+                                (str "uml-go-no-such-module-" (System/nanoTime)))
+          failure (thrown-by #(graph-go/scan-facts missing-root nil))]
+      (should-not-be-nil failure)
+      (should-contain "Go module root not found" (ex-message failure))
+      (should-contain (str missing-root) (ex-message failure))
+      (should-not-contain "toolchain" (ex-message failure))))
+
   (it "throws with the helper's stderr when the helper fails"
     (with-go
       (let [broken-root (temp-copy-of-fixture)]

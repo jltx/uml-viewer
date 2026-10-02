@@ -40,6 +40,9 @@
 (defn- run-helper
   "Stdout of the goscan helper run in module `root`."
   [root go-opts]
+  ;; checked first: a process started in a missing directory fails like a missing program
+  (when-not (.isDirectory (io/file root))
+    (throw (ex-info (str "Go module root not found: " root) {:root (str root)})))
   ;; stderr goes to a file: an undrained stderr pipe blocks the child once it fills
   (let [stderr-file (java.io.File/createTempFile "goscan" ".stderr")]
     (try
