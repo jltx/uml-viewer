@@ -24,6 +24,7 @@
                         quil/quil {:mvn/version "4.3.1563"}}
            :main-opts ["-m" "clj-mutate.core"]}
   :ir {:main-opts ["-m" "uml-viewer.main.ir-generator"]}
+  :go-metrics {:main-opts ["-m" "uml-viewer.main.go-metrics"]}
   :run {:extra-deps {quil/quil {:mvn/version "4.3.1563"}}
         :main-opts ["-m" "uml-viewer.main.uml-viewer"]}
   :uml-viewer {:extra-deps {quil/quil {:mvn/version "4.3.1563"}}

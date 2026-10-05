@@ -247,6 +247,49 @@
       :cam-x (- cx (/ (double vw) 2.0 z))
       :cam-y (- cy (/ (double vh) 2.0 z)))))
 
+(def fit-margin 16)
+(def breadcrumb-h 48)
+
+(defn- scene-extent [state]
+  (let [size (get-in state [:scene :size] {:w 800 :h 600})]
+    {:left (or (:min-x size) 0)
+     :top (or (:min-y size) 0)
+     :right (:w size)
+     :bottom (:h size)}))
+
+(defn scene-visible?
+  "True when the whole scene is on the diagram area of the window (left of
+  the sidebar) at the state's zoom and camera."
+  [state dims]
+  (let [{:keys [left top right bottom]} (scene-extent state)
+        z (zoom-of state)
+        cam-x (:cam-x state 0)
+        cam-y (:cam-y state 0)]
+    (and (>= left cam-x)
+         (>= top cam-y)
+         (<= right (+ cam-x (/ (double (:view-w dims)) z)))
+         (<= bottom (+ cam-y (/ (double (:window-h dims)) z))))))
+
+(defn fit-view
+  "Zoom out and move the camera until the whole scene is on the diagram
+  area, below the breadcrumb, with a small margin. A scene that is already
+  all visible is returned as it is, so this never zooms in. The zoom stops
+  at `zoom-min`; `scene-visible?` then tells that the scene is cropped."
+  [state dims]
+  (if (scene-visible? state dims)
+    state
+    (let [{:keys [left top right bottom]} (scene-extent state)
+          z (max zoom-min
+                 (min 1.0
+                      (/ (- (:view-w dims) (* 2.0 fit-margin))
+                         (- right left))
+                      (/ (- (:window-h dims) breadcrumb-h fit-margin)
+                         (double (- bottom top)))))]
+      (assoc state
+        :zoom z
+        :cam-x (- left (/ fit-margin z))
+        :cam-y (- top (/ breadcrumb-h z))))))
+
 (defn- raw-char [raw]
   (cond
     (char? raw) raw

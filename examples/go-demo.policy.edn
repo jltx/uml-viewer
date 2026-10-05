@@ -1,0 +1,8 @@
+{:title "Go demo"
+ :lang :go
+ :src "spec/fixtures/go/demo"
+ :prefix "example.com.demo"
+ :go {:goos "linux"}
+ :foreign [std]
+ :out "examples/go-demo.edn"
+ :hierarchical true}

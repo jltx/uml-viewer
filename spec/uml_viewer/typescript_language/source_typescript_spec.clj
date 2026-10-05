@@ -32,5 +32,5 @@
       (let [found (source/member-source {:lang :typescript
                                          :file (.getPath file)
                                          :ns "bookwriter.model"})]
-        (should= (.getPath file) (:file found))
+        (should= (.replace (.getPath file) java.io.File/separatorChar \/) (:file found))
         (should-be-nil (:line found))))))

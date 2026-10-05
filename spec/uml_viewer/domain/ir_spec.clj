@@ -148,6 +148,19 @@
     (should-throw (ir/normalize {:packages [{:id :p :label "P" :classes [{:id :a :name "A"}]}]
                                 :edges [{}]})))
 
+  (it "keeps a member's own :file as a string and :line as a long"
+    (let [d (ir/normalize
+              {:packages [{:id :p :label "P"
+                           :classes [{:id :a :name "A" :file "pkg/a.go"
+                                      :ops [{:name "B" :file "pkg/b.go" :line 7}
+                                            {:name "C"}]}]}]})
+          [with-location without-location] (get-in d [:packages 0 :classes 0 :ops])]
+      (should= "pkg/b.go" (:file with-location))
+      (should= 7 (:line with-location))
+      (should (instance? Long (:line with-location)))
+      (should-not (contains? without-location :file))
+      (should-not (contains? without-location :line))))
+
   (it "reads a diagram from an EDN string"
     (should= "Tiny" (:title (ir/read-diagram "{:title \"Tiny\" :packages [{:id :p :label \"P\" :classes [{:id :a :name \"A\"}]}] :edges []}"))))
 

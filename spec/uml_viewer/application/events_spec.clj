@@ -262,6 +262,58 @@
     (let [s (assoc (state) :zoom 2.0 :cam-x 10 :cam-y 20)]
       (should= [15.0 30.0] (events/world-xy s 10 20)))))
 
+(def ^:private diagram-area {:view-w 1220 :window-h 920})
+
+(defn- sized-state [size]
+  {:scene {:size size} :cam-x 0 :cam-y 0})
+
+(defn- screen-corners
+  "Where the four corners of the scene extent land on the window."
+  [s]
+  (let [{:keys [w h min-x min-y]} (get-in s [:scene :size])
+        z (events/zoom-of s)]
+    (for [x [(or min-x 0) w]
+          y [(or min-y 0) h]]
+      [(* z (- x (:cam-x s))) (* z (- y (:cam-y s)))])))
+
+(defn- inside-diagram-area? [[x y]]
+  (let [slack 1e-6]
+    (and (<= (- events/fit-margin slack) x
+             (+ (- (:view-w diagram-area) events/fit-margin) slack))
+         (<= (- events/breadcrumb-h slack) y
+             (+ (- (:window-h diagram-area) events/fit-margin) slack)))))
+
+(describe "fit view"
+  (it "zooms out and moves the camera until every scene corner is on the diagram area"
+    (doseq [size [{:w 3000 :h 2500 :min-x -50.0 :min-y -30.0}
+                  {:w 5000 :h 400 :min-x 0.0 :min-y 0.0}
+                  {:w 600 :h 4000}
+                  {:w 1221 :h 921}]]
+      (let [fitted (events/fit-view (sized-state size) diagram-area)]
+        (should (< events/zoom-min (:zoom fitted) 1.0))
+        (should (every? inside-diagram-area? (screen-corners fitted)))
+        (should (events/scene-visible? fitted diagram-area)))))
+
+  (it "leaves a scene that is already all on the window exactly as it is"
+    (doseq [size [{:w 416.0 :h 210 :min-x 0 :min-y 0}
+                  {:w 1220 :h 920}]]
+      (let [s (sized-state size)
+            fitted (events/fit-view s diagram-area)]
+        (should= s fitted)
+        (should= 1.0 (events/zoom-of fitted))
+        (should= [0 0] [(:cam-x fitted) (:cam-y fitted)]))))
+
+  (it "moves the camera without zooming when a small scene starts left of or above the origin"
+    (let [fitted (events/fit-view (sized-state {:w 500 :h 400 :min-x -80.0 :min-y -20.0})
+                                  diagram-area)]
+      (should= 1.0 (:zoom fitted))
+      (should (every? inside-diagram-area? (screen-corners fitted)))))
+
+  (it "stops at the smallest zoom, which leaves a huge scene cropped"
+    (let [fitted (events/fit-view (sized-state {:w 100000 :h 500}) diagram-area)]
+      (should= events/zoom-min (:zoom fitted))
+      (should-not (events/scene-visible? fitted diagram-area)))))
+
 (describe "detail window"
   (it "lists methods from a hierarchical document on the class card"
     (let [doc {:hierarchical true
